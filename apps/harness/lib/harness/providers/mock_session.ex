@@ -240,12 +240,13 @@ defmodule Harness.Providers.MockSession do
       {%{from: nil, method: "initialize"}, pending} ->
         state = %{state | pending: pending}
         send_to_port(state, JsonRpc.encode_notification("initialized"))
-        emit_event(state, :session, "session/ready", %{})
+        # Don't emit session/ready here — wait for thread/start
         send(self(), :start_thread)
         state
       {%{from: nil, method: "thread/start"}, pending} ->
         codex_id = get_in(result, ["thread", "id"])
         state = %{state | pending: pending, codex_thread_id: codex_id, ready: true}
+        emit_event(state, :session, "session/ready", %{})
         Enum.each(state.ready_waiters, &GenServer.reply(&1, :ok))
         %{state | ready_waiters: []}
       {%{from: from, timer: timer}, pending} ->
@@ -258,11 +259,18 @@ defmodule Harness.Providers.MockSession do
   defp handle_rpc_error(state, id, error) do
     case Map.pop(state.pending, id) do
       {nil, _} -> state
-      {%{from: from, timer: timer}, pending} ->
+      {%{from: from, timer: timer, method: method}, pending} ->
         if timer, do: Process.cancel_timer(timer)
         message = Map.get(error, "message", "Unknown error")
         if from, do: GenServer.reply(from, {:error, message})
-        %{state | pending: pending}
+        state = %{state | pending: pending}
+        # If startup failed, wake up ready_waiters with error
+        if method in ["initialize", "thread/start"] do
+          Enum.each(state.ready_waiters, &GenServer.reply(&1, {:error, message}))
+          %{state | ready_waiters: []}
+        else
+          state
+        end
     end
   end
 

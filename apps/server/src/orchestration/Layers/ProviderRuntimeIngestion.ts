@@ -881,7 +881,7 @@ const make = Effect.gen(function* () {
             );
             yield* orchestrationEngine.dispatch({
               type: "thread.create",
-              commandId: `auto-create-${event.threadId}-${Date.now()}`,
+              commandId: CommandId.makeUnsafe(`auto-create-${event.threadId}:${crypto.randomUUID()}`),
               threadId: event.threadId,
               provider: event.provider,
               model: (event.payload as Record<string, unknown>)?.model as string | undefined,

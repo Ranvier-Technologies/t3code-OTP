@@ -139,7 +139,6 @@ defmodule Harness.SnapshotServer do
 
   defp snapshot_to_map(%Snapshot{} = s) do
     %{
-      sequence: s.sequence,
       updatedAt: s.updated_at,
       sessions: Map.new(s.sessions, fn {k, v} -> {k, session_to_map(v)} end)
     }

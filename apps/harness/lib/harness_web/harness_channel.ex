@@ -194,6 +194,11 @@ defmodule HarnessWeb.HarnessChannel do
     end
   end
 
+  @impl true
+  def handle_in("provider.listModels", _params, socket) do
+    {:reply, {:error, %{message: "Missing required param: provider"}}, socket}
+  end
+
   # --- Snapshot ---
 
   @impl true

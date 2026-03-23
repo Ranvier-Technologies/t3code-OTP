@@ -106,6 +106,16 @@ defmodule Harness.Projector do
     end)
   end
 
+  # --- Notification events that resolve pending requests ---
+
+  defp apply_event(snapshot, %Event{kind: :notification, method: "request/resolved"} = event) do
+    request_id = get_in(event.payload, ["requestId"]) || event.event_id
+
+    update_session(snapshot, event.thread_id, fn session ->
+      %{session | pending_requests: Map.delete(session.pending_requests, request_id), updated_at: event.created_at}
+    end)
+  end
+
   # --- Default: pass through without snapshot mutation ---
 
   defp apply_event(snapshot, _event) do

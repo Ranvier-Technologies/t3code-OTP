@@ -1301,7 +1301,12 @@ export function mapToRuntimeEvents(
     const chunk = asString(msg?.chunk);
     if (!chunk) return [];
     // Codex sends base64-encoded output chunks
-    const delta = Buffer.from(chunk, "base64").toString("utf-8");
+    let delta: string;
+    try {
+      delta = Buffer.from(chunk, "base64").toString("utf-8");
+    } catch {
+      return [];
+    }
     if (!delta) return [];
     return [
       {

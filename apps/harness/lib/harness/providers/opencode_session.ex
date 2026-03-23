@@ -347,12 +347,17 @@ defmodule Harness.Providers.OpenCodeSession do
 
         if permission_id do
           # Send the first answer as the reply text
-          answer_text =
-            case answers do
-              [first | _] -> to_string(first)
-              text when is_binary(text) -> text
-              _ -> ""
-            end
+          answer_text = cond do
+            is_map(answers) ->
+              # Web client sends %{"questionId" => "answer"}
+              answers |> Map.values() |> List.first() |> to_string()
+            is_list(answers) ->
+              Enum.map_join(answers, "\n", &to_string/1)
+            is_binary(answers) ->
+              answers
+            true ->
+              ""
+          end
 
           reply_to_permission(state, permission_id, answer_text)
         end
@@ -373,7 +378,7 @@ defmodule Harness.Providers.OpenCodeSession do
     thread = %{
       threadId: state.thread_id,
       turns: Enum.map(state.messages, fn m ->
-        %{id: Map.get(m, "id", ""), items: []}
+        %{id: Map.get(m, :turn_id, ""), items: Map.get(m, :items, [])}
       end)
     }
 

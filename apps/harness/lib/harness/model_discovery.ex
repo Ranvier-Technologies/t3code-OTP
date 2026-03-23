@@ -41,7 +41,11 @@ defmodule Harness.ModelDiscovery do
   def ensure_cache_table do
     case :ets.whereis(@cache_table) do
       :undefined ->
-        :ets.new(@cache_table, [:named_table, :set, :public, read_concurrency: true])
+        try do
+          :ets.new(@cache_table, [:named_table, :set, :public, read_concurrency: true])
+        rescue
+          ArgumentError -> :ok
+        end
       _ ->
         :ok
     end
