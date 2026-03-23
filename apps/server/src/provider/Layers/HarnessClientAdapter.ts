@@ -951,7 +951,10 @@ export function makeHarnessClientAdapterLive(options?: HarnessClientAdapterLiveO
               detail: toMessage(cause, "Failed to start harness session."),
               cause,
             }),
-        }).pipe(Effect.map((raw) => coerceSession(raw, input.threadId, input.provider as ProviderKind)));
+        }).pipe(
+          Effect.tap(() => Effect.sync(() => { sessionListCache = null; })),
+          Effect.map((raw) => coerceSession(raw, input.threadId, input.provider as ProviderKind)),
+        );
       };
 
       const sendTurn: HarnessClientAdapterShape["sendTurn"] = (input) =>
@@ -1007,7 +1010,7 @@ export function makeHarnessClientAdapterLive(options?: HarnessClientAdapterLiveO
         Effect.tryPromise({
           try: () => manager.stopSession(threadId),
           catch: (cause) => toRequestError(threadId, "session/stop", cause),
-        });
+        }).pipe(Effect.tap(() => Effect.sync(() => { sessionListCache = null; })));
 
       // Cache listSessions to reduce polling pressure on the Elixir harness.
       // hasSession() calls listSessions() on every check — without caching this
