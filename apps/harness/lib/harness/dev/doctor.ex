@@ -80,22 +80,24 @@ defmodule Harness.Dev.Doctor do
   end
 
   defp run_version_check(binary, args) do
-    try do
-      case System.cmd(binary, args, stderr_to_stdout: true, timeout: @check_timeout_ms) do
-        {output, 0} ->
-          version = parse_version(output)
-          {:ok, version || String.trim(output)}
+    task =
+      Task.async(fn ->
+        System.cmd(binary, args, stderr_to_stdout: true)
+      end)
 
-        {output, code} ->
-          {:error, "Exit code #{code}: #{String.slice(String.trim(output), 0, 200)}"}
-      end
-    catch
-      :error, %ErlangError{original: :timeout} ->
+    case Task.yield(task, @check_timeout_ms) || Task.shutdown(task) do
+      {:ok, {output, 0}} ->
+        version = parse_version(output)
+        {:ok, version || String.trim(output)}
+
+      {:ok, {output, code}} ->
+        {:error, "Exit code #{code}: #{String.slice(String.trim(output), 0, 200)}"}
+
+      nil ->
         {:error, "Version check timed out after #{@check_timeout_ms}ms"}
-
-      kind, reason ->
-        {:error, "#{kind}: #{inspect(reason)}"}
     end
+  rescue
+    e -> {:error, inspect(e)}
   end
 
   defp parse_version(output) do
