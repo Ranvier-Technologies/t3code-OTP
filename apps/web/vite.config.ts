@@ -51,6 +51,9 @@ export default defineConfig({
       host: "localhost",
     },
   },
+  test: {
+    exclude: ["e2e/**", "node_modules/**"],
+  },
   build: {
     outDir: "dist",
     emptyOutDir: true,
