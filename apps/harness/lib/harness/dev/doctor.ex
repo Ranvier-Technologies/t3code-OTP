@@ -93,6 +93,9 @@ defmodule Harness.Dev.Doctor do
       {:ok, {output, code}} ->
         {:error, "Exit code #{code}: #{String.slice(String.trim(output), 0, 200)}"}
 
+      {:exit, reason} ->
+        {:error, "Task exited: #{inspect(reason)}"}
+
       nil ->
         {:error, "Version check timed out after #{@check_timeout_ms}ms"}
     end
