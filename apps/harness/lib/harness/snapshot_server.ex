@@ -37,6 +37,14 @@ defmodule Harness.SnapshotServer do
   end
 
   @doc """
+  Get WAL (write-ahead log) stats for developer diagnostics.
+  Returns size, max_size, current sequence, and oldest retained sequence.
+  """
+  def get_wal_stats do
+    GenServer.call(__MODULE__, :get_wal_stats)
+  end
+
+  @doc """
   Replay events since a given sequence number.
   Returns {current_seq, missed_events} where missed_events is a list of
   event maps with seq >= after_seq, ordered oldest-first.
@@ -60,6 +68,18 @@ defmodule Harness.SnapshotServer do
   end
 
   @impl true
+  def handle_call(:get_wal_stats, _from, {_snapshot, wal, wal_size, seq} = state) do
+    oldest_seq =
+      case :queue.peek(wal) do
+        {:value, {s, _}} -> s
+        :empty -> nil
+      end
+
+    {:reply, %{size: wal_size, max_size: @wal_max_size, sequence: seq, oldest_seq: oldest_seq},
+     state}
+  end
+
+  @impl true
   def handle_call({:replay_since, after_seq}, _from, {_snapshot, wal, wal_size, seq} = state) do
     if wal_size == 0 or after_seq >= seq do
       # Nothing to replay
@@ -67,19 +87,23 @@ defmodule Harness.SnapshotServer do
     else
       # Check if the requested seq is still in the buffer
       wal_list = :queue.to_list(wal)
-      oldest_seq = case List.first(wal_list) do
-        {s, _} -> s
-        _ -> seq
-      end
+
+      oldest_seq =
+        case List.first(wal_list) do
+          {s, _} -> s
+          _ -> seq
+        end
 
       if after_seq < oldest_seq - 1 do
         # Gap — requested events have been evicted
         {:reply, {:gap, seq, oldest_seq}, state}
       else
         # Replay events with seq > after_seq
-        missed = wal_list
+        missed =
+          wal_list
           |> Enum.filter(fn {s, _} -> s > after_seq end)
           |> Enum.map(fn {s, event_map} -> Map.put(event_map, :seq, s) end)
+
         {:reply, {:ok, seq, missed}, state}
       end
     end
@@ -112,10 +136,11 @@ defmodule Harness.SnapshotServer do
           Phoenix.PubSub.broadcast(
             Harness.PubSub,
             "harness:events",
-            {:harness_session_changed, %{
-              threadId: event.thread_id,
-              session: session_to_map(session)
-            }}
+            {:harness_session_changed,
+             %{
+               threadId: event.thread_id,
+               session: session_to_map(session)
+             }}
           )
       end
     end
@@ -127,6 +152,7 @@ defmodule Harness.SnapshotServer do
 
   defp wal_append(wal, wal_size, entry) do
     new_wal = :queue.in(entry, wal)
+
     if wal_size >= @wal_max_size do
       {_, trimmed} = :queue.out(new_wal)
       {trimmed, wal_size}

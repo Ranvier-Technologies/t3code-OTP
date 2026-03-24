@@ -127,19 +127,24 @@ defmodule Harness.Providers.ClaudeSession do
   # On error exit: stop the GenServer.
   @impl true
   def handle_info({port, {:exit_status, status}}, %{port: port} = state) do
-    unless state.stopped do
-      Logger.info("Claude process exited with status #{status} for thread #{state.thread_id}")
+    state =
+      if state.stopped do
+        state
+      else
+        Logger.info("Claude process exited with status #{status} for thread #{state.thread_id}")
 
-      # Complete any active turn
-      state = maybe_complete_turn(state, if(status == 0, do: "completed", else: "failed"))
+        # Complete any active turn
+        completed = maybe_complete_turn(state, if(status == 0, do: "completed", else: "failed"))
 
-      if status != 0 do
-        emit_event(state, :session, "session/exited", %{
-          "exitStatus" => status,
-          "exitKind" => "error"
-        })
+        if status != 0 do
+          emit_event(completed, :session, "session/exited", %{
+            "exitStatus" => status,
+            "exitKind" => "error"
+          })
+        end
+
+        completed
       end
-    end
 
     if status == 0 and not state.stopped do
       # Graceful exit — stay alive for next turn, clear port and buffer
@@ -170,18 +175,50 @@ defmodule Harness.Providers.ClaudeSession do
     {:noreply, state}
   end
 
+  # --- Diagnostics ---
+
+  @impl true
+  def handle_call(:get_diagnostics, _from, state) do
+    alias Harness.Dev.DiagnosticsHelpers, as: DH
+
+    diagnostics = %{
+      thread_id: state.thread_id,
+      provider: state.provider,
+      session_id: state.session_id,
+      resume_session_id: state.resume_session_id,
+      binary_path: state.binary_path,
+      stopped: state.stopped,
+      port_alive: DH.port_alive?(state.port),
+      turn_state: DH.sanitize_turn_state(state.turn_state),
+      pending_approvals_count: map_size(state.pending_approvals),
+      pending_user_inputs_count: map_size(state.pending_user_inputs),
+      in_flight_tools_count: map_size(state.in_flight_tools),
+      turn_count: length(state.turns),
+      buffer_bytes: byte_size(state.buffer || "")
+    }
+
+    {:reply, {:ok, diagnostics}, state}
+  end
+
   # --- Send Turn ---
 
   @impl true
   def handle_call({:send_turn, params}, _from, state) do
     # Auto-complete any stale turn and kill previous process
     state = maybe_complete_turn(state, "completed")
-    state = if state.port do
-      try do Port.close(state.port) catch _, _ -> :ok end
-      %{state | port: nil}
-    else
-      state
-    end
+
+    state =
+      if state.port do
+        try do
+          Port.close(state.port)
+        catch
+          _, _ -> :ok
+        end
+
+        %{state | port: nil}
+      else
+        state
+      end
 
     turn_id = generate_uuid()
     input = Map.get(params, "input", [])
@@ -202,21 +239,31 @@ defmodule Harness.Providers.ClaudeSession do
 
     # Spawn claude with --print and the prompt as argument
     model = Map.get(params, "model", Map.get(state.params, "model", "claude-sonnet-4-6"))
-    state = case spawn_claude_with_prompt(state, model, text) do
+
+    case spawn_claude_with_prompt(state, model, text) do
       {:ok, port} ->
-        %{state | port: port}
+        state = %{state | port: port}
+        resume_cursor = build_resume_cursor(state)
+
+        {:reply,
+         {:ok,
+          %{
+            threadId: state.thread_id,
+            turnId: turn_id,
+            resumeCursor: resume_cursor
+          }}, state}
+
       {:error, reason} ->
         Logger.error("Failed to spawn claude: #{inspect(reason)}")
-        state
+        state = maybe_complete_turn(state, "failed")
+
+        emit_event(state, :error, "runtime/error", %{
+          "message" => "Failed to spawn claude: #{inspect(reason)}",
+          "class" => "spawn_error"
+        })
+
+        {:reply, {:error, "Failed to spawn claude: #{inspect(reason)}"}, state}
     end
-
-    resume_cursor = build_resume_cursor(state)
-
-    {:reply, {:ok, %{
-      threadId: state.thread_id,
-      turnId: turn_id,
-      resumeCursor: resume_cursor
-    }}, state}
   end
 
   # --- Interrupt ---
@@ -227,6 +274,7 @@ defmodule Harness.Providers.ClaudeSession do
       # Send SIGINT to claude process
       try do
         port_info = Port.info(state.port)
+
         if port_info do
           os_pid = Keyword.get(port_info, :os_pid)
           if os_pid, do: System.cmd("kill", ["-2", to_string(os_pid)], stderr_to_stdout: true)
@@ -277,11 +325,13 @@ defmodule Harness.Providers.ClaudeSession do
         state = %{state | pending_user_inputs: remaining}
 
         # Send answers back to claude process
-        response = Jason.encode!(%{
-          "type" => "user_input_response",
-          "request_id" => request_id,
-          "answers" => answers
-        })
+        response =
+          Jason.encode!(%{
+            "type" => "user_input_response",
+            "request_id" => request_id,
+            "answers" => answers
+          })
+
         send_to_port(state, response)
 
         emit_event(state, :notification, "user-input/resolved", %{
@@ -299,9 +349,10 @@ defmodule Harness.Providers.ClaudeSession do
   def handle_call(:read_thread, _from, state) do
     thread = %{
       threadId: state.thread_id,
-      turns: Enum.map(state.turns, fn t ->
-        %{id: t.turn_id, items: Map.get(t, :items, [])}
-      end)
+      turns:
+        Enum.map(state.turns, fn t ->
+          %{id: t.turn_id, items: Map.get(t, :items, [])}
+        end)
     }
 
     {:reply, {:ok, thread}, state}
@@ -311,31 +362,36 @@ defmodule Harness.Providers.ClaudeSession do
 
   @impl true
   def handle_call({:rollback_thread, num_turns}, _from, state) do
-    turns = if num_turns > 0 do
-      Enum.drop(state.turns, -num_turns)
-    else
-      state.turns
-    end
+    turns =
+      if num_turns > 0 do
+        Enum.drop(state.turns, -num_turns)
+      else
+        state.turns
+      end
 
     # Update resume state to point to the rollback target.
     # The next --resume will spawn from this point, keeping SDK state in sync.
     state = %{state | turns: turns}
-    state = case List.last(turns) do
-      nil ->
-        # Rolled back to beginning — clear resume state
-        %{state | last_assistant_uuid: nil}
-      _last_turn ->
-        # Keep existing resume_session_id; the SDK session is still valid.
-        # On next send_turn, --resume will replay from the session and
-        # the SDK will pick up from the correct point.
-        state
-    end
+
+    state =
+      case List.last(turns) do
+        nil ->
+          # Rolled back to beginning — clear resume state
+          %{state | last_assistant_uuid: nil}
+
+        _last_turn ->
+          # Keep existing resume_session_id; the SDK session is still valid.
+          # On next send_turn, --resume will replay from the session and
+          # the SDK will pick up from the correct point.
+          state
+      end
 
     thread = %{
       threadId: state.thread_id,
-      turns: Enum.map(turns, fn t ->
-        %{id: t.turn_id, items: Map.get(t, :items, [])}
-      end)
+      turns:
+        Enum.map(turns, fn t ->
+          %{id: t.turn_id, items: Map.get(t, :items, [])}
+        end)
     }
 
     {:reply, {:ok, thread}, state}
@@ -378,23 +434,26 @@ defmodule Harness.Providers.ClaudeSession do
   defp spawn_claude_process(state, cwd, args) do
     # Spawn via /bin/sh -c to redirect stdin from /dev/null.
     # Claude CLI reads stdin by default; without this it waits 3s before proceeding.
-    escaped_args = Enum.map_join([state.binary_path | args], " ", fn arg ->
-      "'#{String.replace(to_string(arg), "'", "'\\''")}'"
-    end)
+    escaped_args =
+      Enum.map_join([state.binary_path | args], " ", fn arg ->
+        "'#{String.replace(to_string(arg), "'", "'\\''")}'"
+      end)
+
     shell_cmd = "#{escaped_args} < /dev/null"
 
     try do
-      port = Port.open(
-        {:spawn_executable, ~c"/bin/sh"},
-        [
-          :binary,
-          :exit_status,
-          {:line, 1_048_576},
-          {:cd, to_charlist(cwd)},
-          {:args, [~c"-c", to_charlist(shell_cmd)]},
-          {:env, build_env()}
-        ]
-      )
+      port =
+        Port.open(
+          {:spawn_executable, ~c"/bin/sh"},
+          [
+            :binary,
+            :exit_status,
+            {:line, 1_048_576},
+            {:cd, to_charlist(cwd)},
+            {:args, [~c"-c", to_charlist(shell_cmd)]},
+            {:env, build_env()}
+          ]
+        )
 
       {:ok, port}
     rescue
@@ -405,35 +464,43 @@ defmodule Harness.Providers.ClaudeSession do
   defp build_claude_args(state, model, prompt) do
     args = [
       "--print",
-      "--output-format", "stream-json",
-      "--model", model,
+      "--output-format",
+      "stream-json",
+      "--model",
+      model,
       "--verbose",
       "--include-partial-messages"
     ]
 
     # Add permission mode
     runtime_mode = Map.get(state.params, "runtimeMode", "approval-required")
-    permission_mode = case runtime_mode do
-      "full-access" -> "bypassPermissions"
-      "plan" -> "plan"
-      _ -> "default"
-    end
+
+    permission_mode =
+      case runtime_mode do
+        "full-access" -> "bypassPermissions"
+        "plan" -> "plan"
+        _ -> "default"
+      end
+
     args = args ++ ["--permission-mode", permission_mode]
 
     # Add resume if available
-    args = if state.resume_session_id do
-      args ++ ["--resume", state.resume_session_id]
-    else
-      args ++ ["--session-id", state.session_id]
-    end
+    args =
+      if state.resume_session_id do
+        args ++ ["--resume", state.resume_session_id]
+      else
+        args ++ ["--session-id", state.session_id]
+      end
 
     # Add max thinking tokens if set
     provider_options = Map.get(state.params, "providerOptions", %{})
     claude_options = Map.get(provider_options, "claudeAgent", %{})
-    args = case Map.get(claude_options, "maxThinkingTokens") do
-      nil -> args
-      tokens -> args ++ ["--max-thinking-tokens", to_string(tokens)]
-    end
+
+    args =
+      case Map.get(claude_options, "maxThinkingTokens") do
+        nil -> args
+        tokens -> args ++ ["--max-thinking-tokens", to_string(tokens)]
+      end
 
     # Append prompt at the end (required for --print mode)
     if prompt do
@@ -527,10 +594,11 @@ defmodule Harness.Providers.ClaudeSession do
   end
 
   defp handle_system_message(%{"subtype" => "status", "status" => status}, state) do
-    sdk_state = case status do
-      "compacting" -> "waiting"
-      _ -> "running"
-    end
+    sdk_state =
+      case status do
+        "compacting" -> "waiting"
+        _ -> "running"
+      end
 
     emit_event(state, :session, "session/state-changed", %{"state" => sdk_state})
     state
@@ -542,8 +610,14 @@ defmodule Harness.Providers.ClaudeSession do
   end
 
   defp handle_system_message(%{"subtype" => subtype} = msg, state)
-       when subtype in ["hook_started", "hook_progress", "hook_response",
-                         "task_started", "task_progress", "task_notification"] do
+       when subtype in [
+              "hook_started",
+              "hook_progress",
+              "hook_response",
+              "task_started",
+              "task_progress",
+              "task_notification"
+            ] do
     emit_event(state, :notification, subtype, msg)
     state
   end
@@ -566,20 +640,24 @@ defmodule Harness.Providers.ClaudeSession do
     state = if uuid, do: %{state | last_assistant_uuid: uuid}, else: state
 
     # Auto-start synthetic turn if no turn state
-    state = if state.turn_state == nil do
-      turn_id = generate_uuid()
-      emit_event(state, :notification, "turn/started", %{
-        "turn" => %{"id" => turn_id},
-        "synthetic" => true
-      })
-      %{state | turn_state: %{turn_id: turn_id, started_at: now_iso(), items: []}}
-    else
-      state
-    end
+    state =
+      if state.turn_state == nil do
+        turn_id = generate_uuid()
+
+        emit_event(state, :notification, "turn/started", %{
+          "turn" => %{"id" => turn_id},
+          "synthetic" => true
+        })
+
+        %{state | turn_state: %{turn_id: turn_id, started_at: now_iso(), items: []}}
+      else
+        state
+      end
 
     # Emit content if present
     content = get_in(msg, ["message", "content"]) || []
     turn_id = turn_id_from_state(state)
+
     Enum.each(content, fn
       %{"type" => "text", "text" => text} when is_binary(text) and text != "" ->
         emit_event(state, :notification, "content/delta", %{
@@ -604,7 +682,10 @@ defmodule Harness.Providers.ClaudeSession do
 
   # --- Content Block Events ---
 
-  defp handle_content_block_start(%{"content_block" => %{"type" => "tool_use"} = block} = msg, state) do
+  defp handle_content_block_start(
+         %{"content_block" => %{"type" => "tool_use"} = block} = msg,
+         state
+       ) do
     index = Map.get(msg, "index", 0)
     tool_name = Map.get(block, "name", "unknown")
     item_id = Map.get(block, "id", generate_uuid())
@@ -643,22 +724,32 @@ defmodule Harness.Providers.ClaudeSession do
       "delta" => text,
       "turnId" => turn_id_from_state(state)
     })
+
     state
   end
 
-  defp handle_content_block_delta(%{"delta" => %{"type" => "thinking_delta", "thinking" => text}}, state)
+  defp handle_content_block_delta(
+         %{"delta" => %{"type" => "thinking_delta", "thinking" => text}},
+         state
+       )
        when is_binary(text) and text != "" do
     emit_event(state, :notification, "content/delta", %{
       "streamKind" => "reasoning_text",
       "delta" => text,
       "turnId" => turn_id_from_state(state)
     })
+
     state
   end
 
-  defp handle_content_block_delta(%{"delta" => %{"type" => "input_json_delta", "partial_json" => json}, "index" => index}, state) do
+  defp handle_content_block_delta(
+         %{"delta" => %{"type" => "input_json_delta", "partial_json" => json}, "index" => index},
+         state
+       ) do
     case Map.get(state.in_flight_tools, index) do
-      nil -> state
+      nil ->
+        state
+
       tool ->
         updated = %{tool | partial_input_json: tool.partial_input_json <> (json || "")}
         put_in(state.in_flight_tools[index], updated)
@@ -675,6 +766,7 @@ defmodule Harness.Providers.ClaudeSession do
           "itemType" => "assistant_message",
           "turnId" => turn_id_from_state(state)
         })
+
         state
 
       {_tool, remaining} ->
@@ -723,7 +815,10 @@ defmodule Harness.Providers.ClaudeSession do
           questions: questions
         }
 
-        state = %{state | pending_user_inputs: Map.put(state.pending_user_inputs, request_id, pending)}
+        state = %{
+          state
+          | pending_user_inputs: Map.put(state.pending_user_inputs, request_id, pending)
+        }
 
         emit_event(state, :request, "user-input/requested", %{
           "requestId" => request_id,
@@ -741,12 +836,14 @@ defmodule Harness.Providers.ClaudeSession do
         })
 
         # Auto-deny ExitPlanMode
-        response = Jason.encode!(%{
-          "type" => "permission_response",
-          "tool_use_id" => tool_use_id,
-          "behavior" => "deny",
-          "message" => "The client captured your proposed plan."
-        })
+        response =
+          Jason.encode!(%{
+            "type" => "permission_response",
+            "tool_use_id" => tool_use_id,
+            "behavior" => "deny",
+            "message" => "The client captured your proposed plan."
+          })
+
         send_to_port(state, response)
 
         state
@@ -762,7 +859,10 @@ defmodule Harness.Providers.ClaudeSession do
           detail: extract_approval_detail(tool_input)
         }
 
-        state = %{state | pending_approvals: Map.put(state.pending_approvals, request_id, pending)}
+        state = %{
+          state
+          | pending_approvals: Map.put(state.pending_approvals, request_id, pending)
+        }
 
         emit_event(state, :request, "request/opened", %{
           "requestId" => request_id,
@@ -782,30 +882,42 @@ defmodule Harness.Providers.ClaudeSession do
   # --- Result Messages ---
 
   defp handle_result_message(%{"subtype" => subtype} = msg, state) do
-    status = case subtype do
-      "success" -> "completed"
-      "error" ->
-        error_msg = get_in(msg, ["error", "message"]) || get_in(msg, ["error"]) || "unknown error"
-        error_str = if is_binary(error_msg), do: error_msg, else: inspect(error_msg)
+    status =
+      case subtype do
+        "success" ->
+          "completed"
 
-        cond do
-          String.contains?(String.downcase(error_str), "interrupt") -> "interrupted"
-          String.contains?(String.downcase(error_str), "cancel") -> "cancelled"
-          true ->
-            emit_event(state, :error, "runtime/error", %{
-              "message" => error_str,
-              "class" => "provider_error"
-            })
-            "failed"
-        end
+        "error" ->
+          error_msg =
+            get_in(msg, ["error", "message"]) || get_in(msg, ["error"]) || "unknown error"
 
-      _ -> "completed"
-    end
+          error_str = if is_binary(error_msg), do: error_msg, else: inspect(error_msg)
+
+          cond do
+            String.contains?(String.downcase(error_str), "interrupt") ->
+              "interrupted"
+
+            String.contains?(String.downcase(error_str), "cancel") ->
+              "cancelled"
+
+            true ->
+              emit_event(state, :error, "runtime/error", %{
+                "message" => error_str,
+                "class" => "provider_error"
+              })
+
+              "failed"
+          end
+
+        _ ->
+          "completed"
+      end
 
     state = maybe_complete_turn(state, status)
 
     # Update usage if present
     usage = Map.get(msg, "usage")
+
     if usage do
       emit_event(state, :notification, "thread/token-usage-updated", usage)
     end
@@ -839,13 +951,14 @@ defmodule Harness.Providers.ClaudeSession do
   defp turn_id_from_state(_), do: nil
 
   defp emit_event(state, kind, method, payload) do
-    event = Event.new(%{
-      thread_id: state.thread_id,
-      provider: state.provider,
-      kind: kind,
-      method: method,
-      payload: payload
-    })
+    event =
+      Event.new(%{
+        thread_id: state.thread_id,
+        provider: state.provider,
+        kind: kind,
+        method: method,
+        payload: payload
+      })
 
     state.event_callback.(event)
   end
@@ -869,12 +982,13 @@ defmodule Harness.Providers.ClaudeSession do
   defp extract_text_from_input(_), do: ""
 
   defp build_approval_response(pending, decision) do
-    behavior = case decision do
-      "accept" -> "allow"
-      "acceptForSession" -> "allow"
-      "allow" -> "allow"
-      _ -> "deny"
-    end
+    behavior =
+      case decision do
+        "accept" -> "allow"
+        "acceptForSession" -> "allow"
+        "allow" -> "allow"
+        _ -> "deny"
+      end
 
     Jason.encode!(%{
       "type" => "permission_response",
@@ -908,25 +1022,31 @@ defmodule Harness.Providers.ClaudeSession do
     resume_cursor = get_in(state.params, ["resumeCursor"])
 
     case resume_cursor do
-      nil -> state
+      nil ->
+        state
+
       cursor when is_binary(cursor) ->
         case Jason.decode(cursor) do
           {:ok, %{"resume" => resume_id} = parsed} ->
-            %{state |
-              resume_session_id: resume_id,
-              last_assistant_uuid: Map.get(parsed, "resumeSessionAt")
+            %{
+              state
+              | resume_session_id: resume_id,
+                last_assistant_uuid: Map.get(parsed, "resumeSessionAt")
             }
 
-          _ -> state
+          _ ->
+            state
         end
 
       %{"resume" => resume_id} = cursor ->
-        %{state |
-          resume_session_id: resume_id,
-          last_assistant_uuid: Map.get(cursor, "resumeSessionAt")
+        %{
+          state
+          | resume_session_id: resume_id,
+            last_assistant_uuid: Map.get(cursor, "resumeSessionAt")
         }
 
-      _ -> state
+      _ ->
+        state
     end
   end
 
@@ -944,15 +1064,28 @@ defmodule Harness.Providers.ClaudeSession do
 
     cond do
       String.contains?(name, "agent") or String.contains?(name, "task") or
-        String.contains?(name, "subagent") -> "collab_agent_tool_call"
+          String.contains?(name, "subagent") ->
+        "collab_agent_tool_call"
+
       String.contains?(name, "bash") or String.contains?(name, "command") or
-        String.contains?(name, "shell") or String.contains?(name, "terminal") -> "command_execution"
+        String.contains?(name, "shell") or String.contains?(name, "terminal") ->
+        "command_execution"
+
       String.contains?(name, "edit") or String.contains?(name, "write") or
-        String.contains?(name, "file") or String.contains?(name, "patch") -> "file_change"
-      String.contains?(name, "mcp") -> "mcp_tool_call"
-      String.contains?(name, "web") and String.contains?(name, "search") -> "web_search"
-      String.contains?(name, "image") -> "image_view"
-      true -> "dynamic_tool_call"
+        String.contains?(name, "file") or String.contains?(name, "patch") ->
+        "file_change"
+
+      String.contains?(name, "mcp") ->
+        "mcp_tool_call"
+
+      String.contains?(name, "web") and String.contains?(name, "search") ->
+        "web_search"
+
+      String.contains?(name, "image") ->
+        "image_view"
+
+      true ->
+        "dynamic_tool_call"
     end
   end
 
@@ -962,12 +1095,19 @@ defmodule Harness.Providers.ClaudeSession do
     cond do
       String.contains?(name, "read") or String.contains?(name, "view") or
         String.contains?(name, "grep") or String.contains?(name, "glob") or
-        String.contains?(name, "search") -> "file_read_approval"
+          String.contains?(name, "search") ->
+        "file_read_approval"
+
       String.contains?(name, "bash") or String.contains?(name, "command") or
-        String.contains?(name, "shell") -> "command_execution_approval"
+          String.contains?(name, "shell") ->
+        "command_execution_approval"
+
       String.contains?(name, "edit") or String.contains?(name, "write") or
-        String.contains?(name, "file") or String.contains?(name, "patch") -> "file_change_approval"
-      true -> "dynamic_tool_call"
+        String.contains?(name, "file") or String.contains?(name, "patch") ->
+        "file_change_approval"
+
+      true ->
+        "dynamic_tool_call"
     end
   end
 
@@ -982,7 +1122,9 @@ defmodule Harness.Providers.ClaudeSession do
   defp generate_uuid do
     Base.encode16(:crypto.strong_rand_bytes(16), case: :lower)
     |> then(fn hex ->
-      <<a::binary-size(8), b::binary-size(4), c::binary-size(4), d::binary-size(4), e::binary-size(12)>> = hex
+      <<a::binary-size(8), b::binary-size(4), c::binary-size(4), d::binary-size(4),
+        e::binary-size(12)>> = hex
+
       "#{a}-#{b}-#{c}-#{d}-#{e}"
     end)
   end
@@ -993,7 +1135,9 @@ defmodule Harness.Providers.ClaudeSession do
 
   defp split_lines(buffer) do
     case String.split(buffer, "\n") do
-      [single] -> {[], single}
+      [single] ->
+        {[], single}
+
       parts ->
         {lines, [remaining]} = Enum.split(parts, -1)
         {lines, remaining}

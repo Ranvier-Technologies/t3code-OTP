@@ -384,9 +384,12 @@ export function codexEventBase(
 ): Omit<ProviderRuntimeEvent, "type" | "payload"> {
   const payload = asObject(event.payload);
   const msg = codexEventMessage(payload);
-  const turnId = asString(msg?.turn_id) ?? asString(msg?.turnId);
-  const itemId = asString(msg?.item_id) ?? asString(msg?.itemId);
-  const requestId = asString(msg?.request_id) ?? asString(msg?.requestId);
+  // Prefer event-level turn/item/request ids (set by the adapter manager)
+  // over msg-level ids (which may reference child/sub-agent ids)
+  const turnId = asString(event.turnId) ?? asString(msg?.turn_id) ?? asString(msg?.turnId);
+  const itemId = asString(event.itemId) ?? asString(msg?.item_id) ?? asString(msg?.itemId);
+  const requestId =
+    asString(event.requestId) ?? asString(msg?.request_id) ?? asString(msg?.requestId);
   const base = runtimeEventBase(event, canonicalThreadId);
   const providerRefs = base.providerRefs
     ? {

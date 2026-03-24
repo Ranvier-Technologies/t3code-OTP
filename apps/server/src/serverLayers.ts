@@ -39,8 +39,6 @@ import { GitManagerLive } from "./git/Layers/GitManager";
 import { GitCoreLive } from "./git/Layers/GitCore";
 import { GitHubCliLive } from "./git/Layers/GitHubCli";
 import { CodexTextGenerationLive } from "./git/Layers/CodexTextGeneration";
-import { BunPtyAdapterLive } from "./terminal/Layers/BunPTY";
-import { NodePtyAdapterLive } from "./terminal/Layers/NodePTY";
 import { PtyAdapter } from "./terminal/Services/PTY";
 import { AnalyticsService } from "./telemetry/Services/AnalyticsService";
 
@@ -63,14 +61,10 @@ const makeRuntimePtyAdapterLayer = () =>
   }).pipe(Layer.unwrap);
 
 /**
- * Provider layer: Claude and Codex always use the Node SDK adapters directly.
- * When the Elixir harness is available (harnessPort configured), Cursor and
- * OpenCode are additionally routed through it. Without harness, only Claude
- * and Codex are available.
- *
- * This follows the "Model D" decision: Node SDK for providers with rich
- * TypeScript SDKs (Claude Agent SDK, Codex CLI), Elixir harness only for
- * providers where OTP adds clear value (Cursor, OpenCode).
+ * Provider layer: Claude always uses the Node SDK adapter (Agent SDK).
+ * When the Elixir harness is available (harnessPort configured), Codex,
+ * Cursor, and OpenCode are routed through it. Without harness, only
+ * Claude and Codex (via Node SDK) are available.
  */
 export function makeServerProviderLayer() {
   return Effect.gen(function* () {
@@ -95,24 +89,24 @@ export function makeServerProviderLayer() {
     );
 
     // Harness adapters — only when harnessPort is configured
+    // Codex, Cursor, and OpenCode route through the Elixir harness.
+    // Claude always uses the Node SDK adapter (Agent SDK, not CLI).
     const harnessEnabled = serverConfig.harnessPort !== undefined;
-    const HARNESS_ONLY_PROVIDERS = ["cursor", "opencode"] as const;
+    const HARNESS_PROVIDERS = ["codex", "cursor", "opencode"] as const;
 
     const adapterRegistryLayer = harnessEnabled
       ? Layer.effect(
           ProviderAdapterRegistry,
           Effect.gen(function* () {
-            const codexAdapter = yield* CodexAdapter;
             const claudeAdapter = yield* ClaudeAdapter;
             const harnessBaseAdapter = yield* HarnessClientAdapter;
 
             type Adapter = ProviderAdapterShape<ProviderAdapterError>;
             const byProvider = new Map<string, Adapter>();
 
-            byProvider.set("codex", codexAdapter);
             byProvider.set("claudeAgent", claudeAdapter);
 
-            for (const providerKind of HARNESS_ONLY_PROVIDERS) {
+            for (const providerKind of HARNESS_PROVIDERS) {
               byProvider.set(providerKind, {
                 ...harnessBaseAdapter,
                 provider: providerKind,
@@ -134,7 +128,6 @@ export function makeServerProviderLayer() {
             };
           }),
         ).pipe(
-          Layer.provide(codexAdapterLayer),
           Layer.provide(claudeAdapterLayer),
           Layer.provide(makeHarnessClientAdapterLive()),
           Layer.provideMerge(providerSessionDirectoryLayer),

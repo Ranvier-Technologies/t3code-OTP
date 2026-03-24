@@ -26,6 +26,7 @@ defmodule HarnessWeb.Endpoint do
 
   defp route(%{request_path: "/api/session/start", method: "POST"} = conn, _opts) do
     params = conn.body_params
+
     case Harness.SessionManager.start_session(params) do
       {:ok, session} -> json_response(conn, 200, %{ok: true, session: session})
       {:error, reason} -> json_response(conn, 400, %{ok: false, error: reason})
@@ -67,6 +68,48 @@ defmodule HarnessWeb.Endpoint do
     metrics = Harness.Metrics.collect()
     json_response(conn, 200, metrics)
   end
+
+  # --- Developer Surface (/api/dev/*) ---
+
+  defp route(%{request_path: "/api/dev/explain/topics"} = conn, _opts) do
+    json_response(conn, 200, %{ok: true, data: Harness.Dev.Explain.topics()})
+  end
+
+  defp route(%{request_path: "/api/dev/explain/" <> topic} = conn, _opts) when topic != "" do
+    case Harness.Dev.Explain.topic(topic) do
+      {:ok, data} -> json_response(conn, 200, %{ok: true, data: data})
+      {:error, reason} -> json_response(conn, 404, %{ok: false, error: reason})
+    end
+  end
+
+  defp route(%{request_path: "/api/dev/doctor/" <> target} = conn, _opts) when target != "" do
+    case Harness.Dev.Doctor.check(target) do
+      {:ok, data} -> json_response(conn, 200, %{ok: true, data: data})
+      {:error, reason} -> json_response(conn, 400, %{ok: false, error: reason})
+    end
+  end
+
+  defp route(%{request_path: "/api/dev/doctor"} = conn, _opts) do
+    json_response(conn, 200, %{ok: true, data: Harness.Dev.Doctor.full()})
+  end
+
+  defp route(%{request_path: "/api/dev/session/" <> thread_id} = conn, _opts)
+       when thread_id != "" do
+    case Harness.Dev.Inspect.session(thread_id) do
+      {:ok, data} -> json_response(conn, 200, %{ok: true, data: data})
+      {:error, reason} -> json_response(conn, 404, %{ok: false, error: reason})
+    end
+  end
+
+  defp route(%{request_path: "/api/dev/sessions"} = conn, _opts) do
+    json_response(conn, 200, %{ok: true, data: Harness.Dev.Inspect.sessions()})
+  end
+
+  defp route(%{request_path: "/api/dev/bridge"} = conn, _opts) do
+    json_response(conn, 200, %{ok: true, data: Harness.Dev.Inspect.bridge()})
+  end
+
+  # --- Default routes ---
 
   defp route(%{request_path: "/"} = conn, _opts) do
     conn

@@ -2,7 +2,7 @@ import tailwindcss from "@tailwindcss/vite";
 import react, { reactCompilerPreset } from "@vitejs/plugin-react";
 import babel from "@rolldown/plugin-babel";
 import { tanstackRouter } from "@tanstack/router-plugin/vite";
-import { defineConfig } from "vite";
+import { defineConfig } from "vitest/config";
 import pkg from "./package.json" with { type: "json" };
 
 const port = Number(process.env.PORT ?? 5733);
@@ -50,6 +50,9 @@ export default defineConfig({
       protocol: "ws",
       host: "localhost",
     },
+  },
+  test: {
+    exclude: ["e2e/**", "node_modules/**"],
   },
   build: {
     outDir: "dist",
