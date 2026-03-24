@@ -37,13 +37,13 @@ defmodule Mix.Tasks.Harness.Explain do
   end
 
   def run([]) do
-    Mix.shell().error(
+    Mix.raise(
       "Usage: mix harness.explain <topic>\nRun `mix harness.explain topics` to see available topics."
     )
   end
 
   def run(_) do
-    Mix.shell().error("Usage: mix harness.explain <topic>")
+    Mix.raise("Usage: mix harness.explain <topic>")
   end
 
   defp print_topic(data) do

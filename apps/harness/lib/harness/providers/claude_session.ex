@@ -127,19 +127,24 @@ defmodule Harness.Providers.ClaudeSession do
   # On error exit: stop the GenServer.
   @impl true
   def handle_info({port, {:exit_status, status}}, %{port: port} = state) do
-    unless state.stopped do
-      Logger.info("Claude process exited with status #{status} for thread #{state.thread_id}")
+    state =
+      if state.stopped do
+        state
+      else
+        Logger.info("Claude process exited with status #{status} for thread #{state.thread_id}")
 
-      # Complete any active turn
-      state = maybe_complete_turn(state, if(status == 0, do: "completed", else: "failed"))
+        # Complete any active turn
+        completed = maybe_complete_turn(state, if(status == 0, do: "completed", else: "failed"))
 
-      if status != 0 do
-        emit_event(state, :session, "session/exited", %{
-          "exitStatus" => status,
-          "exitKind" => "error"
-        })
+        if status != 0 do
+          emit_event(completed, :session, "session/exited", %{
+            "exitStatus" => status,
+            "exitKind" => "error"
+          })
+        end
+
+        completed
       end
-    end
 
     if status == 0 and not state.stopped do
       # Graceful exit — stay alive for next turn, clear port and buffer
@@ -235,25 +240,30 @@ defmodule Harness.Providers.ClaudeSession do
     # Spawn claude with --print and the prompt as argument
     model = Map.get(params, "model", Map.get(state.params, "model", "claude-sonnet-4-6"))
 
-    state =
-      case spawn_claude_with_prompt(state, model, text) do
-        {:ok, port} ->
-          %{state | port: port}
+    case spawn_claude_with_prompt(state, model, text) do
+      {:ok, port} ->
+        state = %{state | port: port}
+        resume_cursor = build_resume_cursor(state)
 
-        {:error, reason} ->
-          Logger.error("Failed to spawn claude: #{inspect(reason)}")
-          state
-      end
+        {:reply,
+         {:ok,
+          %{
+            threadId: state.thread_id,
+            turnId: turn_id,
+            resumeCursor: resume_cursor
+          }}, state}
 
-    resume_cursor = build_resume_cursor(state)
+      {:error, reason} ->
+        Logger.error("Failed to spawn claude: #{inspect(reason)}")
+        state = maybe_complete_turn(state, "failed")
 
-    {:reply,
-     {:ok,
-      %{
-        threadId: state.thread_id,
-        turnId: turn_id,
-        resumeCursor: resume_cursor
-      }}, state}
+        emit_event(state, :error, "runtime/error", %{
+          "message" => "Failed to spawn claude: #{inspect(reason)}",
+          "class" => "spawn_error"
+        })
+
+        {:reply, {:error, "Failed to spawn claude: #{inspect(reason)}"}, state}
+    end
   end
 
   # --- Interrupt ---

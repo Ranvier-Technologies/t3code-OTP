@@ -17,9 +17,12 @@ defmodule Harness.Dev.DiagnosticsHelpers do
     end
   end
 
-  @doc "Sanitize turn_state to only expose id and started_at."
+  @doc "Sanitize turn_state to only expose identifiers and timestamp."
   def sanitize_turn_state(nil), do: nil
-  def sanitize_turn_state(turn) when is_map(turn), do: Map.take(turn, [:id, :started_at])
+
+  def sanitize_turn_state(turn) when is_map(turn),
+    do: Map.take(turn, [:id, :turn_id, :started_at])
+
   def sanitize_turn_state(_), do: nil
 
   @doc "Sanitize account to only expose type, plan_type, spark_enabled."

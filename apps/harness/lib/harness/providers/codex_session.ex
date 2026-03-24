@@ -788,7 +788,7 @@ defmodule Harness.Providers.CodexSession do
 
     is_user_input =
       method in ["ask_user", "user_input", "elicitation"] or
-        String.contains?(String.downcase(method), "ask_user")
+        (is_binary(method) and String.contains?(String.downcase(method), "ask_user"))
 
     if is_user_input do
       questions = Map.get(params, "questions", [Map.get(params, "question", %{})])

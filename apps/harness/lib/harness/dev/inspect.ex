@@ -84,14 +84,7 @@ defmodule Harness.Dev.Inspect do
   WAL stats, and snapshot state. It does NOT represent full Node-side health.
   """
   def bridge do
-    snapshot = Harness.SnapshotServer.get_snapshot()
-
-    wal_stats =
-      try do
-        Harness.SnapshotServer.get_wal_stats()
-      catch
-        :exit, _ -> %{error: "SnapshotServer unreachable"}
-      end
+    {snapshot, wal_stats} = fetch_snapshot_and_wal()
 
     %{
       elixir_side_only: true,
@@ -116,6 +109,24 @@ defmodule Harness.Dev.Inspect do
       [{pid, _}] -> pid
       [] -> nil
     end
+  end
+
+  defp fetch_snapshot_and_wal do
+    snapshot =
+      try do
+        Harness.SnapshotServer.get_snapshot()
+      catch
+        :exit, _ -> %{sequence: 0, sessions: %{}}
+      end
+
+    wal_stats =
+      try do
+        Harness.SnapshotServer.get_wal_stats()
+      catch
+        :exit, _ -> %{error: "SnapshotServer unreachable"}
+      end
+
+    {snapshot, wal_stats}
   end
 
   defp now_ms, do: System.system_time(:millisecond)

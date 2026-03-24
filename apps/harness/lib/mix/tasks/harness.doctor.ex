@@ -16,6 +16,7 @@ defmodule Mix.Tasks.Harness.Doctor do
       mix harness.doctor claude         # Check Claude binary only
       mix harness.doctor cursor         # Check Cursor binary only
       mix harness.doctor opencode       # Check OpenCode binary only
+      mix harness.doctor beam           # Check BEAM runtime health
   """
 
   use Mix.Task

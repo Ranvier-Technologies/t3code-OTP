@@ -110,14 +110,21 @@ defmodule Harness.Dev.Doctor do
   # --- Infrastructure checks ---
 
   defp check_bridge do
+    endpoint_running = Process.whereis(HarnessWeb.Endpoint) != nil
+    pubsub_alive = Process.whereis(Harness.PubSub) != nil
+    registry_alive = Process.whereis(Harness.SessionRegistry) != nil
+    supervisor_alive = Process.whereis(Harness.SessionSupervisor) != nil
     snapshot_alive = Process.whereis(Harness.SnapshotServer) != nil
 
+    all_alive =
+      endpoint_running and pubsub_alive and registry_alive and supervisor_alive and snapshot_alive
+
     %{
-      status: if(snapshot_alive, do: "healthy", else: "degraded"),
-      endpoint_running: Process.whereis(HarnessWeb.Endpoint) != nil,
-      pubsub_alive: Process.whereis(Harness.PubSub) != nil,
-      registry_alive: Process.whereis(Harness.SessionRegistry) != nil,
-      supervisor_alive: Process.whereis(Harness.SessionSupervisor) != nil,
+      status: if(all_alive, do: "healthy", else: "degraded"),
+      endpoint_running: endpoint_running,
+      pubsub_alive: pubsub_alive,
+      registry_alive: registry_alive,
+      supervisor_alive: supervisor_alive,
       snapshot_server_alive: snapshot_alive
     }
   end
