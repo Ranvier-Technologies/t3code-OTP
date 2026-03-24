@@ -86,11 +86,18 @@ defmodule Harness.SessionManager do
         end
 
       {:error, {:already_started, pid}} ->
-        # Session already exists for this thread — reuse it
+        # Session already exists for this thread — reuse it.
+        # Look up the actual running provider from Registry (may differ from the incoming request).
+        actual_provider =
+          case Registry.lookup(Harness.SessionRegistry, thread_id) do
+            [{^pid, registered_provider}] -> registered_provider
+            _ -> provider
+          end
+
         Logger.info("Session already running for thread #{thread_id} (#{inspect(pid)}), reusing")
         {:ok, %{
           threadId: thread_id,
-          provider: provider,
+          provider: actual_provider,
           status: "ready"
         }}
 

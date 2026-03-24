@@ -698,7 +698,7 @@ it.layer(
 });
 
 it.layer(
-  Layer.fresh(makeProjectionPipelinePrefixedTestLayer("t3-projection-attachments-overwrite-")),
+  Layer.fresh(makeProjectionPipelinePrefixedTestLayer("t3-projection-attachments-revert-unref-")),
 )("OrchestrationProjectionPipeline", (it) => {
   it.effect("removes unreferenced attachment files when a thread is reverted", () =>
     Effect.gen(function* () {

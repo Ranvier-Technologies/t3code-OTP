@@ -537,6 +537,10 @@ defmodule Harness.Providers.CodexSession do
     %{state | pending: pending}
   end
 
+  defp send_to_port(%{port: nil}, _message) do
+    {:error, :port_closed}
+  end
+
   defp send_to_port(%{port: port}, message) do
     Port.command(port, message <> "\n")
   end

@@ -43,7 +43,13 @@ async function main() {
   ws.on("message", (raw) => {
     const text = raw.toString();
     console.log(`  [RAW] ${text.slice(0, 200)}`);
-    const msg = JSON.parse(text);
+    let msg: unknown[];
+    try {
+      msg = JSON.parse(text);
+    } catch (err) {
+      console.error("  Failed to parse message:", err);
+      return;
+    }
     const [, ref, , event, payload] = msg;
 
     if (event === "phx_reply" && ref && pending.has(ref)) {

@@ -21,7 +21,9 @@ let HarnessClientManager: any;
 try {
   const mod = await import("../apps/server/src/provider/Layers/HarnessClientManager.ts");
   HarnessClientManager = mod.HarnessClientManager;
-} catch {}
+} catch (err) {
+  console.warn("Failed to import HarnessClientManager:", err);
+}
 
 // ---------------------------------------------------------------------------
 // Config
@@ -172,9 +174,13 @@ async function runNode() {
     const stats = createStats(workload.name, tid);
     allStats.push(stats);
 
-    // Spawn claude --print with stream-json output
-    const child = spawn("/bin/sh", ["-c",
-      `claude --print --output-format stream-json --permission-mode bypassPermissions --model claude-sonnet-4-6 '${workload.prompt.replace(/'/g, "'\\''")}'  < /dev/null`
+    // Spawn claude --print with stream-json output (array form avoids shell injection)
+    const child = spawn("claude", [
+      "--print",
+      "--output-format", "stream-json",
+      "--permission-mode", "bypassPermissions",
+      "--model", "claude-sonnet-4-6",
+      workload.prompt,
     ], {
       cwd: workDir,
       env: process.env,
@@ -240,6 +246,7 @@ async function runNode() {
 // ---------------------------------------------------------------------------
 
 async function runElixir() {
+  if (!HarnessClientManager) throw new Error("HarnessClientManager not available — import failed");
   const allStats: SessionStats[] = [];
   const timeSeries: Array<{
     elapsed_ms: number;

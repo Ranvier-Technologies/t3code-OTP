@@ -493,11 +493,11 @@ async function testB(): Promise<TestResult> {
     }
   };
 
-  async function measureTurnLatency(session: CodexSession, tid: string, prompt: string): Promise<number> {
-    return new Promise<number>(async (resolve) => {
+  function measureTurnLatency(session: CodexSession, tid: string, prompt: string): Promise<number> {
+    return new Promise<number>((resolve) => {
       const timer = setTimeout(() => { turnTimings.delete(tid); resolve(-1); }, 60_000);
       turnTimings.set(tid, { sentAt: Date.now(), resolver: (lat) => { clearTimeout(timer); resolve(lat); } });
-      try { await sendTurn(session, prompt); } catch { clearTimeout(timer); resolve(-1); }
+      sendTurn(session, prompt).catch(() => { clearTimeout(timer); resolve(-1); });
     });
   }
 
@@ -751,7 +751,9 @@ function startMockSession(
           return;
         }
         if (msg.method) onNotification(msg.method, msg.params ?? {});
-      } catch {}
+      } catch (err) {
+        console.error("Failed to parse JSONRPC line:", err);
+      }
     });
 
     child.stderr?.resume();

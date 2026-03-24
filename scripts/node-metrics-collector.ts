@@ -25,6 +25,10 @@ import v8 from "node:v8";
 import { writeFileSync, appendFileSync } from "node:fs";
 
 const durationSeconds = Number(process.argv[2] || 30);
+if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) {
+  console.error(`Invalid duration: ${process.argv[2]} — must be a positive number`);
+  process.exit(1);
+}
 const outputFile = process.argv[3] || null;
 
 interface MetricsSample {

@@ -328,7 +328,7 @@ export class HarnessClientManager {
     if (this.lastSeenSeq === 0) return; // First connect — no replay needed
 
     try {
-      const result = await this.pushChannel("events.replay", {
+      const result = await this.push("events.replay", {
         afterSeq: this.lastSeenSeq,
       });
 
