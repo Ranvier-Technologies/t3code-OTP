@@ -59,7 +59,10 @@ interface MappedEvent {
 // ── rawToProviderEvent (same logic as HarnessClientAdapter.ts) ──
 
 function rawToProviderEvent(raw: HarnessRawEvent): ProviderEvent {
-  const payload = (raw.payload && typeof raw.payload === "object" ? raw.payload : {}) as Record<string, unknown>;
+  const payload = (raw.payload && typeof raw.payload === "object" ? raw.payload : {}) as Record<
+    string,
+    unknown
+  >;
   return {
     id: raw.eventId,
     kind: (["session", "notification", "request", "error"].includes(raw.kind)
@@ -83,33 +86,48 @@ function mapToCanonicalType(event: ProviderEvent): MappedEvent[] {
   const base = { threadId: event.threadId, provider: event.provider };
 
   // Session lifecycle
-  if (event.method === "session/connecting") return [{ ...base, type: "session.state.changed", payload: { state: "connecting" } }];
+  if (event.method === "session/connecting")
+    return [{ ...base, type: "session.state.changed", payload: { state: "connecting" } }];
   if (event.method === "session/started") return [{ ...base, type: "session.started" }];
-  if (event.method === "session/ready") return [{ ...base, type: "session.state.changed", payload: { state: "ready" } }];
-  if (event.method === "session/configured") return [{ ...base, type: "session.configured", payload: event.payload }];
+  if (event.method === "session/ready")
+    return [{ ...base, type: "session.state.changed", payload: { state: "ready" } }];
+  if (event.method === "session/configured")
+    return [{ ...base, type: "session.configured", payload: event.payload }];
   if (event.method === "session/exited") return [{ ...base, type: "session.exited" }];
-  if (event.method.startsWith("session/state")) return [{ ...base, type: "session.state.changed", payload: event.payload }];
+  if (event.method.startsWith("session/state"))
+    return [{ ...base, type: "session.state.changed", payload: event.payload }];
 
   // Turn lifecycle
-  if (event.method === "turn/started") return [{ ...base, type: "turn.started", payload: event.payload }];
-  if (event.method === "turn/completed") return [{ ...base, type: "turn.completed", payload: event.payload }];
+  if (event.method === "turn/started")
+    return [{ ...base, type: "turn.started", payload: event.payload }];
+  if (event.method === "turn/completed")
+    return [{ ...base, type: "turn.completed", payload: event.payload }];
 
   // Content
-  if (event.method === "content/delta") return [{ ...base, type: "content.delta", payload: event.payload }];
-  if (event.method.includes("agentMessage/delta") || event.method.includes("agent_message")) return [{ ...base, type: "content.delta", payload: event.payload }];
+  if (event.method === "content/delta")
+    return [{ ...base, type: "content.delta", payload: event.payload }];
+  if (event.method.includes("agentMessage/delta") || event.method.includes("agent_message"))
+    return [{ ...base, type: "content.delta", payload: event.payload }];
 
   // Items
-  if (event.method === "item/started" || event.method.includes("item_started")) return [{ ...base, type: "item.started", payload: event.payload }];
-  if (event.method === "item/completed" || event.method.includes("item_completed")) return [{ ...base, type: "item.completed", payload: event.payload }];
-  if (event.method === "item/updated") return [{ ...base, type: "item.updated", payload: event.payload }];
+  if (event.method === "item/started" || event.method.includes("item_started"))
+    return [{ ...base, type: "item.started", payload: event.payload }];
+  if (event.method === "item/completed" || event.method.includes("item_completed"))
+    return [{ ...base, type: "item.completed", payload: event.payload }];
+  if (event.method === "item/updated")
+    return [{ ...base, type: "item.updated", payload: event.payload }];
 
   // Requests/permissions
-  if (event.method === "request/opened") return [{ ...base, type: "request.opened", payload: event.payload }];
-  if (event.method === "request/resolved") return [{ ...base, type: "request.resolved", payload: event.payload }];
-  if (event.method === "user-input/requested") return [{ ...base, type: "user-input.requested", payload: event.payload }];
+  if (event.method === "request/opened")
+    return [{ ...base, type: "request.opened", payload: event.payload }];
+  if (event.method === "request/resolved")
+    return [{ ...base, type: "request.resolved", payload: event.payload }];
+  if (event.method === "user-input/requested")
+    return [{ ...base, type: "user-input.requested", payload: event.payload }];
 
   // Token usage
-  if (event.method.includes("token") || event.method.includes("rateLimits")) return [{ ...base, type: "account.updated", payload: event.payload }];
+  if (event.method.includes("token") || event.method.includes("rateLimits"))
+    return [{ ...base, type: "account.updated", payload: event.payload }];
 
   // Error
   if (event.kind === "error") return [{ ...base, type: "runtime.error", payload: event.payload }];
@@ -155,7 +173,13 @@ async function main() {
 
   ws.on("message", (raw) => {
     const msg = JSON.parse(raw.toString());
-    const [, ref, , event, payload] = msg as [string | null, string | null, string, string, Record<string, unknown>];
+    const [, ref, , event, payload] = msg as [
+      string | null,
+      string | null,
+      string,
+      string,
+      Record<string, unknown>,
+    ];
 
     if (event === "phx_reply" && ref && pending.has(ref)) {
       const { resolve, reject } = pending.get(ref)!;
@@ -168,12 +192,12 @@ async function main() {
 
     if (event === "harness.event") {
       const rawEvent: HarnessRawEvent = {
-        eventId: payload.eventId as string ?? "",
-        threadId: payload.threadId as string ?? "",
-        provider: payload.provider as string ?? "",
-        createdAt: payload.createdAt as string ?? "",
-        kind: payload.kind as string ?? "",
-        method: payload.method as string ?? "",
+        eventId: (payload.eventId as string) ?? "",
+        threadId: (payload.threadId as string) ?? "",
+        provider: (payload.provider as string) ?? "",
+        createdAt: (payload.createdAt as string) ?? "",
+        kind: (payload.kind as string) ?? "",
+        method: (payload.method as string) ?? "",
         payload: payload.payload,
       };
       rawEvents.push(rawEvent);
@@ -191,7 +215,9 @@ async function main() {
 
         const icon = isUnmapped ? "\x1b[33m?" : "\x1b[32m✓";
         const typeColor = isUnmapped ? "\x1b[33m" : "\x1b[36m";
-        console.log(`  ${icon}\x1b[0m raw: \x1b[90m${rawEvent.method}\x1b[0m → ${typeColor}${c.type}\x1b[0m`);
+        console.log(
+          `  ${icon}\x1b[0m raw: \x1b[90m${rawEvent.method}\x1b[0m → ${typeColor}${c.type}\x1b[0m`,
+        );
       }
     }
   });
@@ -248,14 +274,16 @@ async function main() {
   console.log(`${"=".repeat(60)}\n`);
 
   console.log(`  Raw events received:    ${rawEvents.length}`);
-  console.log(`  Mapped to canonical:    ${mappedEvents.filter(e => !e.type.startsWith("unmapped:")).length}`);
+  console.log(
+    `  Mapped to canonical:    ${mappedEvents.filter((e) => !e.type.startsWith("unmapped:")).length}`,
+  );
   console.log(`  Unmapped (pass-through): ${unmappedMethods.length}`);
 
   if (unmappedMethods.length > 0) {
     console.log(`\n  Unmapped methods:`);
     const unique = [...new Set(unmappedMethods)];
     for (const m of unique) {
-      const count = unmappedMethods.filter(x => x === m).length;
+      const count = unmappedMethods.filter((x) => x === m).length;
       console.log(`    - ${m} (${count}x)`);
     }
   }
@@ -274,22 +302,27 @@ async function main() {
 
   // Key checks
   console.log(`\n  Key checks:`);
-  const hasSessionStarted = mappedEvents.some(e => e.type === "session.started");
-  const hasTurnStarted = mappedEvents.some(e => e.type === "turn.started");
-  const hasTurnCompleted = mappedEvents.some(e => e.type === "turn.completed");
-  const hasContentDelta = mappedEvents.some(e => e.type === "content.delta");
-  const hasSessionExited = mappedEvents.some(e => e.type === "session.exited");
+  const hasSessionStarted = mappedEvents.some((e) => e.type === "session.started");
+  const hasTurnStarted = mappedEvents.some((e) => e.type === "turn.started");
+  const hasTurnCompleted = mappedEvents.some((e) => e.type === "turn.completed");
+  const hasContentDelta = mappedEvents.some((e) => e.type === "content.delta");
+  const hasSessionExited = mappedEvents.some((e) => e.type === "session.exited");
 
-  const check = (ok: boolean, label: string) => console.log(`    ${ok ? "\x1b[32m✓" : "\x1b[31m✗"}\x1b[0m ${label}`);
+  const check = (ok: boolean, label: string) =>
+    console.log(`    ${ok ? "\x1b[32m✓" : "\x1b[31m✗"}\x1b[0m ${label}`);
   check(hasSessionStarted, "session.started received");
   check(hasTurnStarted, "turn.started received");
   check(hasContentDelta, "content.delta received (assistant text)");
   check(hasTurnCompleted, "turn.completed received");
   check(hasSessionExited, "session.exited received (process ended)");
 
-  const mappingRate = rawEvents.length > 0
-    ? Math.round((mappedEvents.filter(e => !e.type.startsWith("unmapped:")).length / rawEvents.length) * 100)
-    : 0;
+  const mappingRate =
+    rawEvents.length > 0
+      ? Math.round(
+          (mappedEvents.filter((e) => !e.type.startsWith("unmapped:")).length / rawEvents.length) *
+            100,
+        )
+      : 0;
   console.log(`\n  Mapping coverage: ${mappingRate}%`);
 
   if (mappingRate >= 80) {
@@ -301,7 +334,9 @@ async function main() {
   }
 
   // Cleanup
-  try { await send(ws, "session.stop", { threadId }); } catch {}
+  try {
+    await send(ws, "session.stop", { threadId });
+  } catch {}
   console.log("");
   ws.close();
   process.exit(0);

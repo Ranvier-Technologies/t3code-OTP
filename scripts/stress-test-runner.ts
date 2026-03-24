@@ -13,7 +13,10 @@
  *   - Providers available: codex, claudeAgent, cursor, opencode
  */
 
-import { HarnessClientManager, type HarnessRawEvent } from "../apps/server/src/provider/Layers/HarnessClientManager.ts";
+import {
+  HarnessClientManager,
+  type HarnessRawEvent,
+} from "../apps/server/src/provider/Layers/HarnessClientManager.ts";
 import { writeFileSync, mkdirSync } from "node:fs";
 
 // ---------------------------------------------------------------------------
@@ -329,15 +332,15 @@ async function testA(): Promise<TestResult> {
         heap_size: s.heap_size,
       })),
       avgLatency_ms:
-        [...sessions.values()]
-          .flatMap((s) => s.latencies)
-          .reduce((a, b) => a + b, 0) /
-          Math.max(1, [...sessions.values()].flatMap((s) => s.latencies).length),
+        [...sessions.values()].flatMap((s) => s.latencies).reduce((a, b) => a + b, 0) /
+        Math.max(1, [...sessions.values()].flatMap((s) => s.latencies).length),
     },
   };
 
   writeResult("scaling", result);
-  log(`Memory reclaimed: ${((result.summary.memoryReclaimed as number) / 1024 / 1024).toFixed(1)}MB`);
+  log(
+    `Memory reclaimed: ${((result.summary.memoryReclaimed as number) / 1024 / 1024).toFixed(1)}MB`,
+  );
   return result;
 }
 
@@ -365,7 +368,10 @@ async function testB(): Promise<TestResult> {
 
   // --- Explicit per-turn latency measurement ---
   // Track timing per turn using a side-channel keyed by threadId
-  const turnTimings = new Map<string, { sentAt: number; resolver: ((lat: number) => void) | null }>();
+  const turnTimings = new Map<
+    string,
+    { sentAt: number; resolver: ((lat: number) => void) | null }
+  >();
 
   // Create manager with built-in latency tracking
   const mgr = new HarnessClientManager({
@@ -414,7 +420,11 @@ async function testB(): Promise<TestResult> {
     onReconnect: () => {},
   });
 
-  async function measureTurnLatency(threadId: string, prompt: string, timeoutMs = 60_000): Promise<number> {
+  async function measureTurnLatency(
+    threadId: string,
+    prompt: string,
+    timeoutMs = 60_000,
+  ): Promise<number> {
     const { promise, resolve } = Promise.withResolvers<number>();
     const timer = setTimeout(() => {
       turnTimings.delete(threadId);
@@ -447,11 +457,19 @@ async function testB(): Promise<TestResult> {
 
   // Phase 1: Baseline — B alone
   log("Phase 1: Baseline — B alone (3 turns)");
-  await mgr.startSession({ threadId: sessionB.threadId, provider: sessionB.provider, cwd: CWD, runtimeMode: "full-access" });
+  await mgr.startSession({
+    threadId: sessionB.threadId,
+    provider: sessionB.provider,
+    cwd: CWD,
+    runtimeMode: "full-access",
+  });
 
   const baselineLatencies: number[] = [];
   for (let i = 0; i < 3; i++) {
-    const lat = await measureTurnLatency(sessionB.threadId, "Say hello in exactly one word. Do not use tools.");
+    const lat = await measureTurnLatency(
+      sessionB.threadId,
+      "Say hello in exactly one word. Do not use tools.",
+    );
     if (lat > 0) baselineLatencies.push(lat);
     log(`  Baseline turn ${i + 1}: ${lat}ms`);
 
@@ -468,7 +486,12 @@ async function testB(): Promise<TestResult> {
 
   // Phase 2: Start A (heavy) and run B concurrently
   log("\nPhase 2: B with A churning (heavy workload)");
-  await mgr.startSession({ threadId: sessionA.threadId, provider: sessionA.provider, cwd: CWD, runtimeMode: "full-access" });
+  await mgr.startSession({
+    threadId: sessionA.threadId,
+    provider: sessionA.provider,
+    cwd: CWD,
+    runtimeMode: "full-access",
+  });
 
   // Send heavy task to A — await the sendTurn to ensure the turn is accepted,
   // then wait for deltas to confirm Codex is actively streaming.
@@ -494,7 +517,10 @@ async function testB(): Promise<TestResult> {
   const sB = sessions.get(sessionB.threadId)!;
   for (let i = 0; i < 3; i++) {
     const turnsBefore = sB.turnsCompleted;
-    const lat = await measureTurnLatency(sessionB.threadId, "Say hello in exactly one word. Do not use tools.");
+    const lat = await measureTurnLatency(
+      sessionB.threadId,
+      "Say hello in exactly one word. Do not use tools.",
+    );
     if (lat > 0) concurrentLatencies.push(lat);
     log(`  Concurrent turn ${i + 1}: ${lat}ms (A deltas so far: ${sA.deltasReceived})`);
 
@@ -509,7 +535,9 @@ async function testB(): Promise<TestResult> {
   log(`Concurrent latencies: ${concurrentLatencies.map((l) => `${l}ms`).join(", ")}`);
 
   // Cleanup
-  try { await mgr.stopAll(); } catch {}
+  try {
+    await mgr.stopAll();
+  } catch {}
   await sleep(3000);
   allMetrics.push(await fetchMetrics());
   mgr.disconnect();
@@ -580,14 +608,24 @@ async function testC(): Promise<TestResult> {
     sessions.set(claudeId, createSessionState(claudeId, "claudeAgent"));
 
     try {
-      await mgr.startSession({ threadId: codexId, provider: "codex", cwd: CWD, runtimeMode: "full-access" });
+      await mgr.startSession({
+        threadId: codexId,
+        provider: "codex",
+        cwd: CWD,
+        runtimeMode: "full-access",
+      });
       log(`codex[${i}] started`);
     } catch (e) {
       sessions.get(codexId)!.errors.push(e instanceof Error ? e.message : String(e));
     }
 
     try {
-      await mgr.startSession({ threadId: claudeId, provider: "claudeAgent", cwd: CWD, runtimeMode: "full-access" });
+      await mgr.startSession({
+        threadId: claudeId,
+        provider: "claudeAgent",
+        cwd: CWD,
+        runtimeMode: "full-access",
+      });
       log(`claude[${i}] started`);
     } catch (e) {
       sessions.get(claudeId)!.errors.push(e instanceof Error ? e.message : String(e));
@@ -598,7 +636,8 @@ async function testC(): Promise<TestResult> {
   log(`${sessions.size} sessions started`);
 
   // Send a long task to all sessions
-  const prompt = "Write a detailed explanation of how compilers work, covering lexing, parsing, AST construction, and code generation. Do not use tools.";
+  const prompt =
+    "Write a detailed explanation of how compilers work, covering lexing, parsing, AST construction, and code generation. Do not use tools.";
 
   for (const [threadId, s] of sessions) {
     if (s.errors.length > 0) continue;
@@ -653,7 +692,9 @@ async function testC(): Promise<TestResult> {
   allMetrics.push(postKillMetrics);
 
   // Cleanup
-  try { await mgr.stopAll(); } catch {}
+  try {
+    await mgr.stopAll();
+  } catch {}
   await sleep(3000);
   allMetrics.push(await fetchMetrics());
   mgr.disconnect();
@@ -677,11 +718,13 @@ async function testC(): Promise<TestResult> {
       preKillMemory: preKillMetrics.beam.total_memory,
       postKillMemory: postKillMetrics.beam.total_memory,
       memoryReclaimed:
-        (preKillMetrics.beam.total_memory as number) - (postKillMetrics.beam.total_memory as number),
+        (preKillMetrics.beam.total_memory as number) -
+        (postKillMetrics.beam.total_memory as number),
       preKillProcessCount: preKillMetrics.beam.process_count,
       postKillProcessCount: postKillMetrics.beam.process_count,
       processesReclaimed:
-        (preKillMetrics.beam.process_count as number) - (postKillMetrics.beam.process_count as number),
+        (preKillMetrics.beam.process_count as number) -
+        (postKillMetrics.beam.process_count as number),
       snapshotServerQueueMax: Math.max(
         ...recoveryMetrics.map((m) => (m.snapshot_server.message_queue_len as number) ?? 0),
       ),
@@ -740,9 +783,12 @@ async function testD(): Promise<TestResult> {
   for (const [threadId, s] of sessions) {
     if (s.errors.length > 0) continue;
     sendPromises.push(
-      mgr.sendTurn(threadId, { input: [{ type: "text", text: prompt }] }).then(() => {}).catch((e) => {
-        s.errors.push(e instanceof Error ? e.message : String(e));
-      }),
+      mgr
+        .sendTurn(threadId, { input: [{ type: "text", text: prompt }] })
+        .then(() => {})
+        .catch((e) => {
+          s.errors.push(e instanceof Error ? e.message : String(e));
+        }),
     );
   }
   await Promise.all(sendPromises);
@@ -777,7 +823,9 @@ async function testD(): Promise<TestResult> {
   log(`Sessions completed: ${completed}/${sessions.size}, errored: ${errored}`);
 
   // Cleanup
-  try { await mgr.stopAll(); } catch {}
+  try {
+    await mgr.stopAll();
+  } catch {}
   await sleep(3000);
   allMetrics.push(await fetchMetrics());
   mgr.disconnect();

@@ -14,7 +14,13 @@ const URL = `ws://localhost:${PORT}/socket/websocket?secret=${SECRET}&vsn=2.0.0`
 let nextRef = 1;
 const pending = new Map<string, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
 
-function send(ws: WebSocket, joinRef: string | null, event: string, payload: Record<string, unknown>, topic = "harness:lobby"): Promise<unknown> {
+function send(
+  ws: WebSocket,
+  joinRef: string | null,
+  event: string,
+  payload: Record<string, unknown>,
+  topic = "harness:lobby",
+): Promise<unknown> {
   const ref = String(nextRef++);
   const msg = JSON.stringify([joinRef, ref, topic, event, payload]);
 
@@ -43,7 +49,13 @@ async function main() {
   ws.on("message", (raw) => {
     const text = raw.toString();
     console.log(`  [RAW] ${text.slice(0, 200)}`);
-    const msg = JSON.parse(text);
+    let msg: unknown[];
+    try {
+      msg = JSON.parse(text);
+    } catch (err) {
+      console.error("  Failed to parse message:", err);
+      return;
+    }
     const [, ref, , event, payload] = msg;
 
     if (event === "phx_reply" && ref && pending.has(ref)) {
@@ -67,7 +79,9 @@ async function main() {
 
     if (event === "harness.session.changed") {
       const typedPayload = payload as { threadId?: string; session?: { status?: string } };
-      console.log(`  🔄 Session changed: ${typedPayload.threadId} → ${typedPayload.session?.status}`);
+      console.log(
+        `  🔄 Session changed: ${typedPayload.threadId} → ${typedPayload.session?.status}`,
+      );
       return;
     }
   });
@@ -84,13 +98,17 @@ async function main() {
 
   // 2. Get snapshot
   console.log("── Get snapshot ──");
-  const snapshotResp = await send(ws, JOIN_REF, "snapshot.get", {}) as { snapshot: { sequence: number; sessions: Record<string, unknown> } };
+  const snapshotResp = (await send(ws, JOIN_REF, "snapshot.get", {})) as {
+    snapshot: { sequence: number; sessions: Record<string, unknown> };
+  };
   console.log(`  Sequence: ${snapshotResp.snapshot.sequence}`);
   console.log(`  Sessions: ${Object.keys(snapshotResp.snapshot.sessions).length}\n`);
 
   // 3. List sessions
   console.log("── List sessions ──");
-  const sessions = await send(ws, JOIN_REF, "session.listSessions", {}) as { sessions: unknown[] };
+  const sessions = (await send(ws, JOIN_REF, "session.listSessions", {})) as {
+    sessions: unknown[];
+  };
   console.log(`  Active: ${sessions.sessions.length}\n`);
 
   // 4. Start an OpenCode session
@@ -104,7 +122,10 @@ async function main() {
     });
     console.log("✅ Session started:", JSON.stringify(startResult));
   } catch (err) {
-    console.log("⚠️  Session start error (expected if opencode has issues):", (err as Error).message);
+    console.log(
+      "⚠️  Session start error (expected if opencode has issues):",
+      (err as Error).message,
+    );
   }
 
   // 5. Wait for events
@@ -113,7 +134,9 @@ async function main() {
 
   // 6. Check snapshot again
   console.log("── Snapshot after session ──");
-  const snap2Resp = await send(ws, JOIN_REF, "snapshot.get", {}) as { snapshot: { sequence: number; sessions: Record<string, { status: string; provider: string }> } };
+  const snap2Resp = (await send(ws, JOIN_REF, "snapshot.get", {})) as {
+    snapshot: { sequence: number; sessions: Record<string, { status: string; provider: string }> };
+  };
   const snapshot2 = snap2Resp.snapshot;
   console.log(`  Sequence: ${snapshot2.sequence}`);
   for (const [id, s] of Object.entries(snapshot2.sessions)) {

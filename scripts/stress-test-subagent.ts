@@ -25,7 +25,9 @@ let HarnessClientManager: any;
 try {
   const mod = await import("../apps/server/src/provider/Layers/HarnessClientManager.ts");
   HarnessClientManager = mod.HarnessClientManager;
-} catch {}
+} catch (err) {
+  console.warn("Failed to import HarnessClientManager:", err);
+}
 
 // ---------------------------------------------------------------------------
 // Config
@@ -98,7 +100,9 @@ function trackEvent(stats: SubagentStats, method: string, payload: unknown) {
   if (!stats.firstEventAt) stats.firstEventAt = now;
   stats.lastEventAt = now;
 
-  try { stats.totalPayloadBytes += JSON.stringify(payload).length; } catch {}
+  try {
+    stats.totalPayloadBytes += JSON.stringify(payload).length;
+  } catch {}
 
   switch (method) {
     case "item/agentMessage/delta":
@@ -137,13 +141,16 @@ async function runNode() {
     lastLagCheck = now;
   }, 100);
 
-  const sessions = new Map<string, {
-    child: ChildProcessWithoutNullStreams;
-    rl: readline.Interface;
-    pending: Map<number, any>;
-    nextId: number;
-    codexThreadId: string | null;
-  }>();
+  const sessions = new Map<
+    string,
+    {
+      child: ChildProcessWithoutNullStreams;
+      rl: readline.Interface;
+      pending: Map<number, any>;
+      nextId: number;
+      codexThreadId: string | null;
+    }
+  >();
 
   // Start N sessions using mock-codex-server in subagent mode
   for (let i = 0; i < N; i++) {
@@ -151,13 +158,27 @@ async function runNode() {
     const stats = createStats(sid);
     allStats.push(stats);
 
-    const child = spawn("bun", [
-      "run", "scripts/mock-codex-server.ts",
-      String(DELTAS_PER_SESSION), String(DELTA_SIZE_KB), String(DELAY_MS), "subagent",
-    ], { cwd: process.cwd(), env: process.env, stdio: ["pipe", "pipe", "pipe"] });
+    const child = spawn(
+      "bun",
+      [
+        "run",
+        "scripts/mock-codex-server.ts",
+        String(DELTAS_PER_SESSION),
+        String(DELTA_SIZE_KB),
+        String(DELAY_MS),
+        "subagent",
+      ],
+      { cwd: process.cwd(), env: process.env, stdio: ["pipe", "pipe", "pipe"] },
+    );
 
     const rl = readline.createInterface({ input: child.stdout });
-    const session = { child, rl, pending: new Map<number, any>(), nextId: 1, codexThreadId: null as string | null };
+    const session = {
+      child,
+      rl,
+      pending: new Map<number, any>(),
+      nextId: 1,
+      codexThreadId: null as string | null,
+    };
     sessions.set(sid, session);
 
     rl.on("line", (line: string) => {
@@ -165,7 +186,10 @@ async function runNode() {
         const msg = JSON.parse(line);
         if (msg.id != null) {
           const p = session.pending.get(msg.id);
-          if (p) { session.pending.delete(msg.id); p.resolve(msg.result ?? msg.error); }
+          if (p) {
+            session.pending.delete(msg.id);
+            p.resolve(msg.result ?? msg.error);
+          }
           return;
         }
         if (msg.method) trackEvent(stats, msg.method, msg.params);
@@ -173,15 +197,31 @@ async function runNode() {
     });
     child.stderr?.resume();
 
-    const rpc = (method: string, params: any) => new Promise<any>((resolve, reject) => {
-      const id = session.nextId++;
-      const timer = setTimeout(() => { session.pending.delete(id); reject(new Error("timeout")); }, 30000);
-      session.pending.set(id, { resolve: (v: any) => { clearTimeout(timer); resolve(v); }, reject: (e: any) => { clearTimeout(timer); reject(e); } });
-      child.stdin.write(JSON.stringify({ jsonrpc: "2.0", id, method, params }) + "\n");
-    });
+    const rpc = (method: string, params: any) =>
+      new Promise<any>((resolve, reject) => {
+        const id = session.nextId++;
+        const timer = setTimeout(() => {
+          session.pending.delete(id);
+          reject(new Error("timeout"));
+        }, 30000);
+        session.pending.set(id, {
+          resolve: (v: any) => {
+            clearTimeout(timer);
+            resolve(v);
+          },
+          reject: (e: any) => {
+            clearTimeout(timer);
+            reject(e);
+          },
+        });
+        child.stdin.write(JSON.stringify({ jsonrpc: "2.0", id, method, params }) + "\n");
+      });
 
     try {
-      await rpc("initialize", { clientInfo: { name: "stress", version: "1.0" }, capabilities: { experimentalApi: true } });
+      await rpc("initialize", {
+        clientInfo: { name: "stress", version: "1.0" },
+        capabilities: { experimentalApi: true },
+      });
       child.stdin.write(JSON.stringify({ jsonrpc: "2.0", method: "initialized" }) + "\n");
       const threadResult = await rpc("thread/start", { cwd: process.cwd() });
       session.codexThreadId = threadResult?.thread?.id ?? null;
@@ -197,16 +237,34 @@ async function runNode() {
     const session = sessions.get(stats.sessionId);
     if (!session || stats.errors.length > 0) continue;
 
-    const rpc = (method: string, params: any) => new Promise<any>((resolve, reject) => {
-      const id = session.nextId++;
-      const timer = setTimeout(() => { session.pending.delete(id); reject(new Error("timeout")); }, 30000);
-      session.pending.set(id, { resolve: (v: any) => { clearTimeout(timer); resolve(v); }, reject: (e: any) => { clearTimeout(timer); reject(e); } });
-      session.child.stdin.write(JSON.stringify({ jsonrpc: "2.0", id, method, params }) + "\n");
-    });
+    const rpc = (method: string, params: any) =>
+      new Promise<any>((resolve, reject) => {
+        const id = session.nextId++;
+        const timer = setTimeout(() => {
+          session.pending.delete(id);
+          reject(new Error("timeout"));
+        }, 30000);
+        session.pending.set(id, {
+          resolve: (v: any) => {
+            clearTimeout(timer);
+            resolve(v);
+          },
+          reject: (e: any) => {
+            clearTimeout(timer);
+            reject(e);
+          },
+        });
+        session.child.stdin.write(JSON.stringify({ jsonrpc: "2.0", id, method, params }) + "\n");
+      });
 
     rpc("turn/start", {
       threadId: session.codexThreadId,
-      input: [{ type: "text", text: "Build microservices: auth, posts, comments. Delegate each to a subagent." }],
+      input: [
+        {
+          type: "text",
+          text: "Build microservices: auth, posts, comments. Delegate each to a subagent.",
+        },
+      ],
       collaborationMode: { mode: "plan" },
     }).catch((e) => stats.errors.push(e instanceof Error ? e.message : String(e)));
   }
@@ -221,7 +279,9 @@ async function runNode() {
   clearInterval(lagTimer);
 
   for (const [, session] of sessions) {
-    try { session.child.kill(); } catch {}
+    try {
+      session.child.kill();
+    } catch {}
   }
 
   return { allStats, lags };
@@ -232,6 +292,7 @@ async function runNode() {
 // ---------------------------------------------------------------------------
 
 async function runElixir() {
+  if (!HarnessClientManager) throw new Error("HarnessClientManager not available — import failed");
   const allStats: SubagentStats[] = [];
 
   const mgr = new HarnessClientManager({
@@ -250,8 +311,12 @@ async function runElixir() {
   log("Connected to harness");
 
   // Baseline metrics
-  const baseline = await fetch(`http://127.0.0.1:${HARNESS_PORT}/api/metrics`).then((r) => r.json()) as any;
-  log(`Baseline: ${baseline.beam.process_count} processes, ${(baseline.beam.total_memory / 1024 / 1024).toFixed(1)}MB`);
+  const baseline = (await fetch(`http://127.0.0.1:${HARNESS_PORT}/api/metrics`).then((r) =>
+    r.json(),
+  )) as any;
+  log(
+    `Baseline: ${baseline.beam.process_count} processes, ${(baseline.beam.total_memory / 1024 / 1024).toFixed(1)}MB`,
+  );
 
   // Start N sessions with subagent mock mode
   for (let i = 0; i < N; i++) {
@@ -265,7 +330,12 @@ async function runElixir() {
         provider: "mock",
         cwd: process.cwd(),
         providerOptions: {
-          mock: { deltaCount: DELTAS_PER_SESSION, deltaSizeKb: DELTA_SIZE_KB, delayMs: DELAY_MS, mode: "subagent" },
+          mock: {
+            deltaCount: DELTAS_PER_SESSION,
+            deltaSizeKb: DELTA_SIZE_KB,
+            delayMs: DELAY_MS,
+            mode: "subagent",
+          },
         },
       });
     } catch (e) {
@@ -273,15 +343,24 @@ async function runElixir() {
     }
   }
 
-  log(`${allStats.filter((s) => s.errors.length === 0).length} sessions ready, sending subagent tasks...`);
+  log(
+    `${allStats.filter((s) => s.errors.length === 0).length} sessions ready, sending subagent tasks...`,
+  );
 
   // Send turns
   for (const stats of allStats) {
     if (stats.errors.length > 0) continue;
-    mgr.sendTurn(stats.sessionId, {
-      input: [{ type: "text", text: "Build microservices: auth, posts, comments. Delegate each to a subagent." }],
-      collaborationMode: { mode: "plan" },
-    }).catch((e: any) => stats.errors.push(e instanceof Error ? e.message : String(e)));
+    mgr
+      .sendTurn(stats.sessionId, {
+        input: [
+          {
+            type: "text",
+            text: "Build microservices: auth, posts, comments. Delegate each to a subagent.",
+          },
+        ],
+        collaborationMode: { mode: "plan" },
+      })
+      .catch((e: any) => stats.errors.push(e instanceof Error ? e.message : String(e)));
   }
 
   // Wait for all to complete (max 60s)
@@ -297,12 +376,16 @@ async function runElixir() {
   }
 
   // Final metrics
-  const postMetrics = await fetch(`http://127.0.0.1:${HARNESS_PORT}/api/metrics`).then((r) => r.json()) as any;
+  const postMetrics = (await fetch(`http://127.0.0.1:${HARNESS_PORT}/api/metrics`).then((r) =>
+    r.json(),
+  )) as any;
   const sessionData = (postMetrics.sessions ?? [])
     .filter((s: any) => String(s.thread_id ?? "").includes("subagent-elixir"))
     .map((s: any) => ({ memory: s.memory, gc_count: s.gc_count, reductions: s.reductions }));
 
-  try { await mgr.stopAll(); } catch {}
+  try {
+    await mgr.stopAll();
+  } catch {}
   mgr.disconnect();
 
   return { allStats, lags: [] as number[], metricSnapshots, sessionData, postMetrics };
@@ -315,7 +398,9 @@ async function runElixir() {
 async function main() {
   console.log("\n" + "╔" + "═".repeat(58) + "╗");
   console.log("║" + `  GAP 1: Subagent Tree Stress Test — ${RUNTIME}`.padEnd(58) + "║");
-  console.log("║" + `  ${N} sessions × 3 subagents = ${N * 3} subagent lifecycles`.padEnd(58) + "║");
+  console.log(
+    "║" + `  ${N} sessions × 3 subagents = ${N * 3} subagent lifecycles`.padEnd(58) + "║",
+  );
   console.log("║" + `  ${DELTAS_PER_SESSION} deltas/session × ${DELTA_SIZE_KB}KB`.padEnd(58) + "║");
   console.log("╚" + "═".repeat(58) + "╝\n");
 
@@ -331,7 +416,9 @@ async function main() {
   const { allStats, lags } = result;
 
   for (const stats of allStats) {
-    console.log(`  [${stats.sessionId.slice(0, 30)}] events=${stats.totalEvents} deltas=${stats.deltaEvents} spawns=${stats.subagentSpawns} completions=${stats.subagentCompletions} turns=${stats.turnsCompleted}${stats.errors.length > 0 ? " ERRORS=" + stats.errors.length : ""}`);
+    console.log(
+      `  [${stats.sessionId.slice(0, 30)}] events=${stats.totalEvents} deltas=${stats.deltaEvents} spawns=${stats.subagentSpawns} completions=${stats.subagentCompletions} turns=${stats.turnsCompleted}${stats.errors.length > 0 ? " ERRORS=" + stats.errors.length : ""}`,
+    );
   }
 
   const totalEvents = allStats.reduce((s, st) => s + st.totalEvents, 0);
@@ -340,19 +427,31 @@ async function main() {
   const totalPayload = allStats.reduce((s, st) => s + st.totalPayloadBytes, 0);
   const duration = (completedAt - startedAt) / 1000;
 
-  console.log(`\n  Total: ${totalEvents} events (${totalDeltas} deltas, ${totalSpawns} spawns), ${(totalPayload / 1024 / 1024).toFixed(1)}MB payload`);
-  console.log(`  Duration: ${duration.toFixed(1)}s, Throughput: ${Math.round(totalEvents / duration)} events/s`);
+  console.log(
+    `\n  Total: ${totalEvents} events (${totalDeltas} deltas, ${totalSpawns} spawns), ${(totalPayload / 1024 / 1024).toFixed(1)}MB payload`,
+  );
+  console.log(
+    `  Duration: ${duration.toFixed(1)}s, Throughput: ${Math.round(totalEvents / duration)} events/s`,
+  );
 
   if (RUNTIME === "node" && lags.length > 0) {
-    console.log(`  Event loop lag: p50=${percentile(lags, 50).toFixed(1)}ms p99=${percentile(lags, 99).toFixed(1)}ms max=${Math.max(...lags).toFixed(1)}ms`);
+    console.log(
+      `  Event loop lag: p50=${percentile(lags, 50).toFixed(1)}ms p99=${percentile(lags, 99).toFixed(1)}ms max=${Math.max(...lags).toFixed(1)}ms`,
+    );
   }
 
   // Verify subagent lifecycle integrity
-  const integrityOk = allStats.every((s) =>
-    s.errors.length === 0 && s.subagentSpawns === 3 && s.subagentCompletions === 3 &&
-    s.interactionBegins === 3 && s.interactionEnds === 3,
+  const integrityOk = allStats.every(
+    (s) =>
+      s.errors.length === 0 &&
+      s.subagentSpawns === 3 &&
+      s.subagentCompletions === 3 &&
+      s.interactionBegins === 3 &&
+      s.interactionEnds === 3,
   );
-  console.log(`\n  Subagent lifecycle integrity: ${integrityOk ? "PASS (3 spawns, 3 completions per session)" : "FAIL"}`);
+  console.log(
+    `\n  Subagent lifecycle integrity: ${integrityOk ? "PASS (3 spawns, 3 completions per session)" : "FAIL"}`,
+  );
 
   const output = {
     test: "subagent",
@@ -360,7 +459,12 @@ async function main() {
     startedAt,
     completedAt,
     duration_ms: completedAt - startedAt,
-    config: { sessions: N, deltasPerSession: DELTAS_PER_SESSION, deltaSizeKb: DELTA_SIZE_KB, delayMs: DELAY_MS },
+    config: {
+      sessions: N,
+      deltasPerSession: DELTAS_PER_SESSION,
+      deltaSizeKb: DELTA_SIZE_KB,
+      delayMs: DELAY_MS,
+    },
     sessions: allStats,
     summary: {
       sessionCount: N,
@@ -368,14 +472,16 @@ async function main() {
       totalEvents,
       totalDeltas,
       totalSubagentSpawns: totalSpawns,
-      totalPayloadMb: Math.round(totalPayload / 1024 / 1024 * 10) / 10,
+      totalPayloadMb: Math.round((totalPayload / 1024 / 1024) * 10) / 10,
       eventsPerSecond: Math.round(totalEvents / duration),
       lifecycleIntegrity: integrityOk,
-      ...(RUNTIME === "node" && lags.length > 0 ? {
-        lagP50_ms: Math.round(percentile(lags, 50) * 10) / 10,
-        lagP99_ms: Math.round(percentile(lags, 99) * 10) / 10,
-        lagMax_ms: Math.round(Math.max(...lags) * 10) / 10,
-      } : {}),
+      ...(RUNTIME === "node" && lags.length > 0
+        ? {
+            lagP50_ms: Math.round(percentile(lags, 50) * 10) / 10,
+            lagP99_ms: Math.round(percentile(lags, 99) * 10) / 10,
+            lagMax_ms: Math.round(Math.max(...lags) * 10) / 10,
+          }
+        : {}),
       ...("sessionData" in result ? { perSessionMetrics: (result as any).sessionData } : {}),
     },
   };

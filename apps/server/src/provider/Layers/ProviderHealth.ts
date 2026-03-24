@@ -398,11 +398,7 @@ const checkBinaryProviderStatus = (
   provider: "claudeAgent" | "cursor" | "opencode",
   binary: string,
   versionArgs: ReadonlyArray<string>,
-): Effect.Effect<
-  ServerProviderStatus,
-  never,
-  ChildProcessSpawner.ChildProcessSpawner
-> =>
+): Effect.Effect<ServerProviderStatus, never, ChildProcessSpawner.ChildProcessSpawner> =>
   Effect.gen(function* () {
     const checkedAt = new Date().toISOString();
     const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
@@ -421,11 +417,7 @@ const checkBinaryProviderStatus = (
         { concurrency: "unbounded" },
       );
       return { stdout, stderr, code: exitCode };
-    }).pipe(
-      Effect.scoped,
-      Effect.timeoutOption(DEFAULT_TIMEOUT_MS),
-      Effect.result,
-    );
+    }).pipe(Effect.scoped, Effect.timeoutOption(DEFAULT_TIMEOUT_MS), Effect.result);
 
     if (Result.isFailure(result)) {
       return {
@@ -473,17 +465,32 @@ const checkBinaryProviderStatus = (
     };
   });
 
-export const checkClaudeProviderStatus = checkBinaryProviderStatus(
-  "claudeAgent",
-  "claude",
-  ["--version"],
+// Resolve the Claude binary path: prefer PATH, fall back to known macOS locations.
+const CLAUDE_KNOWN_PATHS = [
+  "/usr/local/bin/claude",
+  "/Applications/cmux.app/Contents/Resources/bin/claude",
+  "/Applications/Claude.app/Contents/Resources/bin/claude",
+] as const;
+
+const resolveClaudeBinary = (): Effect.Effect<string, never, FileSystem.FileSystem> =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    for (const knownPath of CLAUDE_KNOWN_PATHS) {
+      const exists = yield* fs.exists(knownPath).pipe(Effect.orElseSucceed(() => false));
+      if (exists) return knownPath;
+    }
+    return "claude";
+  });
+
+export const checkClaudeProviderStatus: Effect.Effect<
+  ServerProviderStatus,
+  never,
+  ChildProcessSpawner.ChildProcessSpawner | FileSystem.FileSystem
+> = resolveClaudeBinary().pipe(
+  Effect.flatMap((binary) => checkBinaryProviderStatus("claudeAgent", binary, ["--version"])),
 );
 
-const checkCursorBinaryStatus = checkBinaryProviderStatus(
-  "cursor",
-  "cursor-agent",
-  ["--version"],
-);
+const checkCursorBinaryStatus = checkBinaryProviderStatus("cursor", "cursor-agent", ["--version"]);
 
 // After binary check, discover available models via `cursor agent --list-models`
 export const checkCursorProviderStatus: typeof checkCursorBinaryStatus = Effect.gen(function* () {
@@ -496,7 +503,9 @@ export const checkCursorProviderStatus: typeof checkCursorBinaryStatus = Effect.
       const { execFile } = await import("node:child_process");
       const { promisify } = await import("node:util");
       const execFileAsync = promisify(execFile);
-      const { stdout } = await execFileAsync("cursor", ["agent", "--list-models"], { timeout: 15_000 });
+      const { stdout } = await execFileAsync("cursor-agent", ["--list-models"], {
+        timeout: 15_000,
+      });
       return parseCursorModelList(stdout);
     } catch {
       return [] as Array<{ slug: string; name: string }>;
@@ -522,34 +531,32 @@ function parseCursorModelList(output: string): Array<{ slug: string; name: strin
     .filter((m): m is { slug: string; name: string } => m !== null);
 }
 
-const checkOpenCodeBinaryStatus = checkBinaryProviderStatus(
-  "opencode",
-  "opencode",
-  ["--help"],
-);
+const checkOpenCodeBinaryStatus = checkBinaryProviderStatus("opencode", "opencode", ["--help"]);
 
 // After binary check, discover available models via `opencode models`
-export const checkOpenCodeProviderStatus: typeof checkOpenCodeBinaryStatus = Effect.gen(function* () {
-  const status = yield* checkOpenCodeBinaryStatus;
-  if (status.status !== "ready") return status;
+export const checkOpenCodeProviderStatus: typeof checkOpenCodeBinaryStatus = Effect.gen(
+  function* () {
+    const status = yield* checkOpenCodeBinaryStatus;
+    if (status.status !== "ready") return status;
 
-  const models = yield* Effect.promise(async () => {
-    try {
-      const { execFile } = await import("node:child_process");
-      const { promisify } = await import("node:util");
-      const execFileAsync = promisify(execFile);
-      const { stdout } = await execFileAsync("opencode", ["models"], { timeout: 15_000 });
-      return parseOpenCodeModelList(stdout);
-    } catch {
-      return [] as Array<{ slug: string; name: string }>;
-    }
-  });
+    const models = yield* Effect.promise(async () => {
+      try {
+        const { execFile } = await import("node:child_process");
+        const { promisify } = await import("node:util");
+        const execFileAsync = promisify(execFile);
+        const { stdout } = await execFileAsync("opencode", ["models"], { timeout: 15_000 });
+        return parseOpenCodeModelList(stdout);
+      } catch {
+        return [] as Array<{ slug: string; name: string }>;
+      }
+    });
 
-  return {
-    ...status,
-    ...(models.length > 0 ? { discoveredModels: models } : {}),
-  };
-});
+    return {
+      ...status,
+      ...(models.length > 0 ? { discoveredModels: models } : {}),
+    };
+  },
+);
 
 function parseOpenCodeModelList(output: string): Array<{ slug: string; name: string }> {
   return output

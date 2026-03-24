@@ -21,7 +21,9 @@ let HarnessClientManager: any;
 try {
   const mod = await import("../apps/server/src/provider/Layers/HarnessClientManager.ts");
   HarnessClientManager = mod.HarnessClientManager;
-} catch {}
+} catch (err) {
+  console.warn("Failed to import HarnessClientManager:", err);
+}
 
 // ---------------------------------------------------------------------------
 // Config
@@ -66,7 +68,14 @@ interface SessionStats {
 }
 
 function createStats(id: string): SessionStats {
-  return { id, deltaCount: 0, turnsCompleted: 0, firstDeltaAt: null, lastDeltaAt: null, errors: [] };
+  return {
+    id,
+    deltaCount: 0,
+    turnsCompleted: 0,
+    firstDeltaAt: null,
+    lastDeltaAt: null,
+    errors: [],
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -87,13 +96,16 @@ async function runNode() {
     lastLagCheck = now;
   }, 100);
 
-  const sessions = new Map<string, {
-    child: ChildProcessWithoutNullStreams;
-    rl: readline.Interface;
-    pending: Map<number, any>;
-    nextId: number;
-    codexThreadId: string | null;
-  }>();
+  const sessions = new Map<
+    string,
+    {
+      child: ChildProcessWithoutNullStreams;
+      rl: readline.Interface;
+      pending: Map<number, any>;
+      nextId: number;
+      codexThreadId: string | null;
+    }
+  >();
 
   // Spawn 50 mock sessions
   log(`Starting ${N} mock child processes...`);
@@ -104,13 +116,27 @@ async function runNode() {
     const stats = createStats(sid);
     allStats.push(stats);
 
-    const child = spawn("bun", [
-      "run", "scripts/mock-codex-server.ts",
-      String(DELTA_COUNT), String(DELTA_SIZE_KB), String(DELAY_MS), "normal",
-    ], { cwd: process.cwd(), env: process.env, stdio: ["pipe", "pipe", "pipe"] });
+    const child = spawn(
+      "bun",
+      [
+        "run",
+        "scripts/mock-codex-server.ts",
+        String(DELTA_COUNT),
+        String(DELTA_SIZE_KB),
+        String(DELAY_MS),
+        "normal",
+      ],
+      { cwd: process.cwd(), env: process.env, stdio: ["pipe", "pipe", "pipe"] },
+    );
 
     const rl = readline.createInterface({ input: child.stdout });
-    const session = { child, rl, pending: new Map<number, any>(), nextId: 1, codexThreadId: null as string | null };
+    const session = {
+      child,
+      rl,
+      pending: new Map<number, any>(),
+      nextId: 1,
+      codexThreadId: null as string | null,
+    };
     sessions.set(sid, session);
 
     rl.on("line", (line: string) => {
@@ -118,7 +144,14 @@ async function runNode() {
         const msg = JSON.parse(line);
         if (msg.id != null) {
           const p = session.pending.get(msg.id);
-          if (p) { session.pending.delete(msg.id); p.resolve(msg.result ?? msg.error); }
+          if (p) {
+            session.pending.delete(msg.id);
+            if (msg.error) {
+              p.reject(new Error(typeof msg.error === "object" ? JSON.stringify(msg.error) : String(msg.error)));
+            } else {
+              p.resolve(msg.result);
+            }
+          }
           return;
         }
         if (msg.method === "item/agentMessage/delta") {
@@ -133,15 +166,25 @@ async function runNode() {
     });
     child.stderr?.resume();
 
-    const rpc = (method: string, params: any) => new Promise<any>((resolve, reject) => {
-      const id = session.nextId++;
-      const timer = setTimeout(() => { session.pending.delete(id); reject(new Error("timeout")); }, 30000);
-      session.pending.set(id, {
-        resolve: (v: any) => { clearTimeout(timer); resolve(v); },
-        reject: (e: any) => { clearTimeout(timer); reject(e); },
+    const rpc = (method: string, params: any) =>
+      new Promise<any>((resolve, reject) => {
+        const id = session.nextId++;
+        const timer = setTimeout(() => {
+          session.pending.delete(id);
+          reject(new Error("timeout"));
+        }, 30000);
+        session.pending.set(id, {
+          resolve: (v: any) => {
+            clearTimeout(timer);
+            resolve(v);
+          },
+          reject: (e: any) => {
+            clearTimeout(timer);
+            reject(e);
+          },
+        });
+        child.stdin.write(JSON.stringify({ jsonrpc: "2.0", id, method, params }) + "\n");
       });
-      child.stdin.write(JSON.stringify({ jsonrpc: "2.0", id, method, params }) + "\n");
-    });
 
     try {
       await rpc("initialize", { clientInfo: { name: "stress", version: "1.0" }, capabilities: {} });
@@ -169,15 +212,25 @@ async function runNode() {
     const session = sessions.get(stats.id);
     if (!session || stats.errors.length > 0) continue;
 
-    const rpc = (method: string, params: any) => new Promise<any>((resolve, reject) => {
-      const id = session.nextId++;
-      const timer = setTimeout(() => { session.pending.delete(id); reject(new Error("timeout")); }, 60000);
-      session.pending.set(id, {
-        resolve: (v: any) => { clearTimeout(timer); resolve(v); },
-        reject: (e: any) => { clearTimeout(timer); reject(e); },
+    const rpc = (method: string, params: any) =>
+      new Promise<any>((resolve, reject) => {
+        const id = session.nextId++;
+        const timer = setTimeout(() => {
+          session.pending.delete(id);
+          reject(new Error("timeout"));
+        }, 60000);
+        session.pending.set(id, {
+          resolve: (v: any) => {
+            clearTimeout(timer);
+            resolve(v);
+          },
+          reject: (e: any) => {
+            clearTimeout(timer);
+            reject(e);
+          },
+        });
+        session.child.stdin.write(JSON.stringify({ jsonrpc: "2.0", id, method, params }) + "\n");
       });
-      session.child.stdin.write(JSON.stringify({ jsonrpc: "2.0", id, method, params }) + "\n");
-    });
 
     rpc("turn/start", {
       threadId: session.codexThreadId,
@@ -187,15 +240,33 @@ async function runNode() {
 
   // Wait for completion (max 2 min)
   const end = Date.now() + 120_000;
-  const metricSnapshots: Array<{ elapsed_ms: number; heapUsed: number; rss: number; completed: number; totalDeltas: number }> = [];
+  const metricSnapshots: Array<{
+    elapsed_ms: number;
+    heapUsed: number;
+    rss: number;
+    completed: number;
+    totalDeltas: number;
+  }> = [];
   while (Date.now() < end) {
     const completed = allStats.filter((s) => s.turnsCompleted > 0).length;
     const totalDeltas = allStats.reduce((s, st) => s + st.deltaCount, 0);
     const mem = process.memoryUsage();
-    metricSnapshots.push({ elapsed_ms: Date.now() - t0, heapUsed: mem.heapUsed, rss: mem.rss, completed, totalDeltas });
+    metricSnapshots.push({
+      elapsed_ms: Date.now() - t0,
+      heapUsed: mem.heapUsed,
+      rss: mem.rss,
+      completed,
+      totalDeltas,
+    });
 
-    if (completed === allStats.length || allStats.every((s) => s.turnsCompleted > 0 || s.errors.length > 0)) break;
-    process.stdout.write(`\r  ${ts()} completed=${completed}/${N} deltas=${totalDeltas} heap=${(mem.heapUsed / 1024 / 1024).toFixed(1)}MB`);
+    if (
+      completed === allStats.length ||
+      allStats.every((s) => s.turnsCompleted > 0 || s.errors.length > 0)
+    )
+      break;
+    process.stdout.write(
+      `\r  ${ts()} completed=${completed}/${N} deltas=${totalDeltas} heap=${(mem.heapUsed / 1024 / 1024).toFixed(1)}MB`,
+    );
     await sleep(1000);
   }
 
@@ -204,7 +275,9 @@ async function runNode() {
 
   // Kill all
   for (const [, session] of sessions) {
-    try { session.child.kill(); } catch {}
+    try {
+      session.child.kill();
+    } catch {}
   }
 
   return { allStats, eventTimestamps, lags, metricSnapshots, startupDuration };
@@ -215,6 +288,7 @@ async function runNode() {
 // ---------------------------------------------------------------------------
 
 async function runElixir() {
+  if (!HarnessClientManager) throw new Error("HarnessClientManager not available — import failed");
   const allStats: SessionStats[] = [];
   const eventTimestamps: number[] = [];
 
@@ -242,8 +316,10 @@ async function runElixir() {
   log("Connected to harness");
 
   const METRICS_URL = `http://127.0.0.1:${HARNESS_PORT}/api/metrics`;
-  const baseline = await fetch(METRICS_URL).then((r) => r.json()) as any;
-  log(`Baseline: ${baseline.beam.process_count} processes, ${(baseline.beam.total_memory / 1024 / 1024).toFixed(1)}MB`);
+  const baseline = (await fetch(METRICS_URL).then((r) => r.json())) as any;
+  log(
+    `Baseline: ${baseline.beam.process_count} processes, ${(baseline.beam.total_memory / 1024 / 1024).toFixed(1)}MB`,
+  );
 
   // Start 50 mock sessions
   log(`Starting ${N} sessions...`);
@@ -259,7 +335,9 @@ async function runElixir() {
         threadId: sid,
         provider: "mock",
         cwd: process.cwd(),
-        providerOptions: { mock: { deltaCount: DELTA_COUNT, deltaSizeKb: DELTA_SIZE_KB, delayMs: DELAY_MS } },
+        providerOptions: {
+          mock: { deltaCount: DELTA_COUNT, deltaSizeKb: DELTA_SIZE_KB, delayMs: DELAY_MS },
+        },
       });
     } catch (e) {
       stats.errors.push(e instanceof Error ? e.message : String(e));
@@ -271,14 +349,18 @@ async function runElixir() {
   const startupDuration = (Date.now() - startPhaseStart) / 1000;
   log(`All ${N} sessions started in ${startupDuration.toFixed(1)}s`);
 
-  const preMetrics = await fetch(METRICS_URL).then((r) => r.json()) as any;
-  log(`After start: ${preMetrics.beam.process_count} processes, ${(preMetrics.beam.total_memory / 1024 / 1024).toFixed(1)}MB`);
+  const preMetrics = (await fetch(METRICS_URL).then((r) => r.json())) as any;
+  log(
+    `After start: ${preMetrics.beam.process_count} processes, ${(preMetrics.beam.total_memory / 1024 / 1024).toFixed(1)}MB`,
+  );
 
   // Send turns to ALL simultaneously
   log("Sending turns to all 50 sessions...");
   const turnPromises = allStats
     .filter((s) => s.errors.length === 0)
-    .map((s) => mgr.sendTurn(s.id, { input: [{ type: "text", text: "scale50 test" }] }).catch(() => {}));
+    .map((s) =>
+      mgr.sendTurn(s.id, { input: [{ type: "text", text: "scale50 test" }] }).catch(() => {}),
+    );
   await Promise.all(turnPromises);
   log("All turns accepted");
 
@@ -291,9 +373,11 @@ async function runElixir() {
     if (completed >= N || allStats.every((s) => s.turnsCompleted > 0 || s.errors.length > 0)) break;
 
     try {
-      const m = await fetch(METRICS_URL).then((r) => r.json()) as any;
+      const m = (await fetch(METRICS_URL).then((r) => r.json())) as any;
       metricSnapshots.push(m);
-      process.stdout.write(`\r  ${ts()} completed=${completed}/${N} deltas=${totalDeltas} mem=${(m.beam.total_memory / 1024 / 1024).toFixed(1)}MB procs=${m.beam.process_count}`);
+      process.stdout.write(
+        `\r  ${ts()} completed=${completed}/${N} deltas=${totalDeltas} mem=${(m.beam.total_memory / 1024 / 1024).toFixed(1)}MB procs=${m.beam.process_count}`,
+      );
     } catch {}
     await sleep(1000);
   }
@@ -301,15 +385,25 @@ async function runElixir() {
   console.log("");
 
   // Final metrics
-  const postMetrics = await fetch(METRICS_URL).then((r) => r.json()) as any;
+  const postMetrics = (await fetch(METRICS_URL).then((r) => r.json())) as any;
   const sessionData = (postMetrics.sessions ?? [])
     .filter((s: any) => String(s.thread_id ?? "").includes("scale50-elixir"))
     .map((s: any) => ({ memory: s.memory, gc_count: s.gc_count, reductions: s.reductions }));
 
-  try { await mgr.stopAll(); } catch {}
+  try {
+    await mgr.stopAll();
+  } catch {}
   mgr.disconnect();
 
-  return { allStats, eventTimestamps, lags: [] as number[], metricSnapshots, startupDuration, sessionData, postMetrics };
+  return {
+    allStats,
+    eventTimestamps,
+    lags: [] as number[],
+    metricSnapshots,
+    startupDuration,
+    sessionData,
+    postMetrics,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -319,7 +413,9 @@ async function runElixir() {
 async function main() {
   console.log("\n" + "╔" + "═".repeat(58) + "╗");
   console.log("║" + `  GAP 3: 50-Session Scale Test — ${RUNTIME}`.padEnd(58) + "║");
-  console.log("║" + `  ${N} sessions × ${DELTA_COUNT} deltas × ${DELTA_SIZE_KB}KB`.padEnd(58) + "║");
+  console.log(
+    "║" + `  ${N} sessions × ${DELTA_COUNT} deltas × ${DELTA_SIZE_KB}KB`.padEnd(58) + "║",
+  );
   console.log("╚" + "═".repeat(58) + "╝\n");
 
   const startedAt = Date.now();
@@ -344,7 +440,9 @@ async function main() {
   // Throughput
   if (eventTimestamps.length > 1) {
     const streamDur = (eventTimestamps[eventTimestamps.length - 1]! - eventTimestamps[0]!) / 1000;
-    console.log(`  Throughput: ${Math.round(eventTimestamps.length / streamDur)} events/s over ${streamDur.toFixed(1)}s`);
+    console.log(
+      `  Throughput: ${Math.round(eventTimestamps.length / streamDur)} events/s over ${streamDur.toFixed(1)}s`,
+    );
   }
 
   // Per-session fairness (stddev of delta counts)
@@ -354,7 +452,9 @@ async function main() {
   console.log(`  Fairness: avg=${avg.toFixed(0)} deltas/session, stddev=${stddev.toFixed(1)}`);
 
   if (RUNTIME === "node" && lags.length > 0) {
-    console.log(`  Event loop lag: p50=${percentile(lags, 50).toFixed(1)}ms p99=${percentile(lags, 99).toFixed(1)}ms max=${Math.max(...lags).toFixed(1)}ms`);
+    console.log(
+      `  Event loop lag: p50=${percentile(lags, 50).toFixed(1)}ms p99=${percentile(lags, 99).toFixed(1)}ms max=${Math.max(...lags).toFixed(1)}ms`,
+    );
   }
 
   if (RUNTIME === "elixir" && "sessionData" in result) {
@@ -369,7 +469,9 @@ async function main() {
       const sched = pm.beam.scheduler_utilization;
       if (Array.isArray(sched)) {
         const avgUtil = sched.reduce((s: number, u: number) => s + u, 0) / sched.length;
-        console.log(`  Scheduler utilization: avg=${(avgUtil * 100).toFixed(1)}%, max=${(Math.max(...sched) * 100).toFixed(1)}%`);
+        console.log(
+          `  Scheduler utilization: avg=${(avgUtil * 100).toFixed(1)}%, max=${(Math.max(...sched) * 100).toFixed(1)}%`,
+        );
       }
     }
   }
@@ -390,15 +492,21 @@ async function main() {
       errors,
       startupDuration_s: result.startupDuration,
       totalDuration_s: duration,
-      eventsPerSecond: eventTimestamps.length > 1
-        ? Math.round(eventTimestamps.length / ((eventTimestamps[eventTimestamps.length - 1]! - eventTimestamps[0]!) / 1000))
-        : 0,
+      eventsPerSecond:
+        eventTimestamps.length > 1
+          ? Math.round(
+              eventTimestamps.length /
+                ((eventTimestamps[eventTimestamps.length - 1]! - eventTimestamps[0]!) / 1000),
+            )
+          : 0,
       fairnessStddev: Math.round(stddev * 10) / 10,
-      ...(RUNTIME === "node" && lags.length > 0 ? {
-        lagP50_ms: Math.round(percentile(lags, 50) * 10) / 10,
-        lagP99_ms: Math.round(percentile(lags, 99) * 10) / 10,
-        lagMax_ms: Math.round(Math.max(...lags) * 10) / 10,
-      } : {}),
+      ...(RUNTIME === "node" && lags.length > 0
+        ? {
+            lagP50_ms: Math.round(percentile(lags, 50) * 10) / 10,
+            lagP99_ms: Math.round(percentile(lags, 99) * 10) / 10,
+            lagMax_ms: Math.round(Math.max(...lags) * 10) / 10,
+          }
+        : {}),
       ...("sessionData" in result ? { perSessionMetrics: (result as any).sessionData } : {}),
     },
   };

@@ -8,7 +8,10 @@
  * Prerequisites: Elixir harness running with mock provider on port 4321.
  */
 
-import { HarnessClientManager, type HarnessRawEvent } from "../apps/server/src/provider/Layers/HarnessClientManager.ts";
+import {
+  HarnessClientManager,
+  type HarnessRawEvent,
+} from "../apps/server/src/provider/Layers/HarnessClientManager.ts";
 import { writeFileSync, mkdirSync } from "node:fs";
 
 const PORT = Number(process.env.T3CODE_HARNESS_PORT ?? 4321);
@@ -67,9 +70,11 @@ async function main() {
   log("Connected");
 
   // Baseline metrics
-  const baseline = await fetch(METRICS_URL).then((r) => r.json()) as Record<string, unknown>;
+  const baseline = (await fetch(METRICS_URL).then((r) => r.json())) as Record<string, unknown>;
   const baseBeam = baseline.beam as Record<string, unknown>;
-  log(`Baseline: ${baseBeam.process_count} processes, ${((baseBeam.total_memory as number) / 1024 / 1024).toFixed(1)}MB`);
+  log(
+    `Baseline: ${baseBeam.process_count} processes, ${((baseBeam.total_memory as number) / 1024 / 1024).toFixed(1)}MB`,
+  );
 
   // Start 10 mock sessions
   for (let i = 0; i < N; i++) {
@@ -86,9 +91,11 @@ async function main() {
   }
   log(`${N} sessions ready`);
 
-  const preMetrics = await fetch(METRICS_URL).then((r) => r.json()) as Record<string, unknown>;
+  const preMetrics = (await fetch(METRICS_URL).then((r) => r.json())) as Record<string, unknown>;
   const preBeam = preMetrics.beam as Record<string, unknown>;
-  log(`After start: ${preBeam.process_count} processes, ${((preBeam.total_memory as number) / 1024 / 1024).toFixed(1)}MB`);
+  log(
+    `After start: ${preBeam.process_count} processes, ${((preBeam.total_memory as number) / 1024 / 1024).toFixed(1)}MB`,
+  );
 
   // Send turns to ALL simultaneously
   log("Sending turns to all 10 sessions...");
@@ -105,7 +112,7 @@ async function main() {
     const allDone = [...states.values()].every((s) => s.turnsCompleted >= 1);
     if (allDone) break;
     try {
-      const m = await fetch(METRICS_URL).then((r) => r.json()) as Record<string, unknown>;
+      const m = (await fetch(METRICS_URL).then((r) => r.json())) as Record<string, unknown>;
       metricSnapshots.push(m);
     } catch {}
     await sleep(1000);
@@ -121,7 +128,7 @@ async function main() {
   }
 
   // Final metrics
-  const postMetrics = await fetch(METRICS_URL).then((r) => r.json()) as Record<string, unknown>;
+  const postMetrics = (await fetch(METRICS_URL).then((r) => r.json())) as Record<string, unknown>;
   const postBeam = postMetrics.beam as Record<string, unknown>;
   const postSessions = (postMetrics.sessions as Array<Record<string, unknown>>) ?? [];
   const snapshotServer = postMetrics.snapshot_server as Record<string, unknown>;
@@ -137,13 +144,17 @@ async function main() {
 
   const maxSnapshotQueue = Math.max(
     0,
-    ...metricSnapshots.map((m) => ((m.snapshot_server as Record<string, unknown>)?.message_queue_len as number) ?? 0),
+    ...metricSnapshots.map(
+      (m) => ((m.snapshot_server as Record<string, unknown>)?.message_queue_len as number) ?? 0,
+    ),
   );
 
   log(`Completed: ${completed}/${N}, total deltas: ${totalDeltas}`);
   log(`Event throughput: ${eventsPerSecond} events/s`);
   log(`SnapshotServer max queue: ${maxSnapshotQueue}`);
-  log(`Post: ${postBeam.process_count} processes, ${((postBeam.total_memory as number) / 1024 / 1024).toFixed(1)}MB`);
+  log(
+    `Post: ${postBeam.process_count} processes, ${((postBeam.total_memory as number) / 1024 / 1024).toFixed(1)}MB`,
+  );
 
   if (sessionMemories.length > 0) {
     const avgMem = sessionMemories.reduce((s, m) => s + m.memory, 0) / sessionMemories.length;
@@ -152,7 +163,9 @@ async function main() {
   }
 
   // Cleanup
-  try { await mgr.stopAll(); } catch {}
+  try {
+    await mgr.stopAll();
+  } catch {}
   await sleep(2000);
   mgr.disconnect();
 
@@ -172,8 +185,14 @@ async function main() {
       eventsPerSecond,
       snapshotServerMaxQueue: maxSnapshotQueue,
       perSessionMemories: sessionMemories,
-      avgSessionMemory: sessionMemories.length > 0 ? Math.round(sessionMemories.reduce((s, m) => s + m.memory, 0) / sessionMemories.length) : 0,
-      avgSessionGcCount: sessionMemories.length > 0 ? Math.round(sessionMemories.reduce((s, m) => s + m.gc_count, 0) / sessionMemories.length) : 0,
+      avgSessionMemory:
+        sessionMemories.length > 0
+          ? Math.round(sessionMemories.reduce((s, m) => s + m.memory, 0) / sessionMemories.length)
+          : 0,
+      avgSessionGcCount:
+        sessionMemories.length > 0
+          ? Math.round(sessionMemories.reduce((s, m) => s + m.gc_count, 0) / sessionMemories.length)
+          : 0,
       beamTotalMemory: postBeam.total_memory,
       beamProcessCount: postBeam.process_count,
       beamGcRuns: postBeam.gc_runs,

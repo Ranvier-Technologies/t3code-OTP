@@ -2114,4 +2114,163 @@ describe("ProviderRuntimeIngestion", () => {
     expect(thread.session?.status).toBe("error");
     expect(thread.session?.lastError).toBe("runtime still processed");
   });
+
+  describe("C019: thread routing race condition", () => {
+    it("does not misassociate events with wrong thread when session is rebound", async () => {
+      const harness = await createHarness();
+      const now = new Date().toISOString();
+
+      harness.emit({
+        type: "turn.started",
+        eventId: asEventId("evt-turn-started-thread-1"),
+        provider: "codex",
+        createdAt: now,
+        threadId: asThreadId("thread-1"),
+        turnId: asTurnId("turn-thread-1-original"),
+      });
+
+      await waitForThread(
+        harness.engine,
+        (thread) =>
+          thread.session?.status === "running" &&
+          thread.session?.activeTurnId === "turn-thread-1-original",
+      );
+
+      harness.setProviderSession({
+        provider: "codex",
+        status: "running",
+        runtimeMode: "approval-required",
+        threadId: ThreadId.makeUnsafe("thread-2"),
+        createdAt: now,
+        updatedAt: new Date().toISOString(),
+        activeTurnId: asTurnId("turn-thread-2-rebound"),
+      });
+
+      harness.emit({
+        type: "content.delta",
+        eventId: asEventId("evt-stale-delta-for-thread-1"),
+        provider: "codex",
+        createdAt: now,
+        threadId: asThreadId("thread-1"),
+        turnId: asTurnId("turn-thread-1-original"),
+        itemId: asItemId("item-stale"),
+        payload: {
+          streamKind: "assistant_text",
+          delta: "stale message",
+        },
+      });
+
+      await harness.drain();
+      const readModel = await Effect.runPromise(harness.engine.getReadModel());
+
+      const thread1 = readModel.threads.find((t) => t.id === ThreadId.makeUnsafe("thread-1"));
+      expect(thread1?.session?.activeTurnId).toBe("turn-thread-1-original");
+
+      const staleMessage = thread1?.messages.find(
+        (m) => m.id === "assistant:item-stale",
+      );
+      expect(staleMessage).toBeUndefined();
+    });
+
+    it("handles events arriving out-of-order for same threadId", async () => {
+      const harness = await createHarness();
+      const now = new Date().toISOString();
+
+      harness.emit({
+        type: "item.completed",
+        eventId: asEventId("evt-ooo-completed"),
+        provider: "codex",
+        createdAt: now,
+        threadId: asThreadId("thread-1"),
+        turnId: asTurnId("turn-ooo"),
+        itemId: asItemId("item-ooo"),
+        payload: {
+          itemType: "assistant_message",
+          status: "completed",
+          detail: "final text",
+        },
+      });
+
+      harness.emit({
+        type: "content.delta",
+        eventId: asEventId("evt-ooo-delta"),
+        provider: "codex",
+        createdAt: now,
+        threadId: asThreadId("thread-1"),
+        turnId: asTurnId("turn-ooo"),
+        itemId: asItemId("item-ooo"),
+        payload: {
+          streamKind: "assistant_text",
+          delta: "final text",
+        },
+      });
+
+      await waitForThread(harness.engine, (entry) =>
+        entry.messages.some(
+          (m) => m.id === "assistant:item-ooo" && !m.streaming && m.text === "final text",
+        ),
+      );
+
+      const thread = await Effect.runPromise(
+        Effect.map(harness.engine.getReadModel(), (rm) =>
+          rm.threads.find((t) => t.id === ThreadId.makeUnsafe("thread-1")),
+        ),
+      );
+
+      const message = thread?.messages.find((m) => m.id === "assistant:item-ooo");
+      expect(message?.text).toBe("final text");
+      expect(message?.streaming).toBe(false);
+    });
+
+    it("verifies session association before applying turn lifecycle events", async () => {
+      const harness = await createHarness();
+      const now = new Date().toISOString();
+
+      harness.emit({
+        type: "turn.started",
+        eventId: asEventId("evt-turn-started-for-session-verification"),
+        provider: "codex",
+        createdAt: now,
+        threadId: asThreadId("thread-1"),
+        turnId: asTurnId("turn-session-verification"),
+      });
+
+      await waitForThread(
+        harness.engine,
+        (thread) =>
+          thread.session?.status === "running" &&
+          thread.session?.activeTurnId === "turn-session-verification",
+      );
+
+      harness.setProviderSession({
+        provider: "codex",
+        status: "running",
+        runtimeMode: "approval-required",
+        threadId: ThreadId.makeUnsafe("thread-1"),
+        createdAt: now,
+        updatedAt: new Date().toISOString(),
+        activeTurnId: asTurnId("turn-session-verification"),
+      });
+
+      harness.emit({
+        type: "turn.completed",
+        eventId: asEventId("evt-turn-completed-session-verification"),
+        provider: "codex",
+        createdAt: new Date().toISOString(),
+        threadId: asThreadId("thread-1"),
+        turnId: asTurnId("turn-session-verification"),
+        payload: {
+          state: "completed",
+        },
+      });
+
+      const thread = await waitForThread(
+        harness.engine,
+        (entry) =>
+          entry.session?.status === "ready" && entry.session?.activeTurnId === null,
+      );
+      expect(thread.session?.status).toBe("ready");
+      expect(thread.session?.activeTurnId).toBeNull();
+    });
+  });
 });

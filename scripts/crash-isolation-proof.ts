@@ -8,7 +8,10 @@
  * Usage: bun run scripts/crash-isolation-proof.ts
  */
 
-import { HarnessClientManager, type HarnessRawEvent } from "../apps/server/src/provider/Layers/HarnessClientManager.ts";
+import {
+  HarnessClientManager,
+  type HarnessRawEvent,
+} from "../apps/server/src/provider/Layers/HarnessClientManager.ts";
 
 const port = Number(process.env.T3CODE_HARNESS_PORT ?? 4321);
 const secret = process.env.T3CODE_HARNESS_SECRET ?? "dev-harness-secret";
@@ -17,7 +20,11 @@ const t0 = Date.now();
 const ts = () => `+${((Date.now() - t0) / 1000).toFixed(1)}s`;
 
 const sessionA = { threadId: `victim-${Date.now()}`, provider: "codex", label: "Codex (VICTIM)" };
-const sessionB = { threadId: `survivor-${Date.now()}`, provider: "claudeAgent", label: "Claude (SURVIVOR)" };
+const sessionB = {
+  threadId: `survivor-${Date.now()}`,
+  provider: "claudeAgent",
+  label: "Claude (SURVIVOR)",
+};
 
 const state = {
   A: { turnStarted: false, deltas: 0, completed: false, killed: false, text: "" },
@@ -38,7 +45,9 @@ console.log(`
 
 let killTriggered = false;
 let killResolve: (() => void) | null = null;
-const killPromise = new Promise<void>((r) => { killResolve = r; });
+const killPromise = new Promise<void>((r) => {
+  killResolve = r;
+});
 
 const mgr = new HarnessClientManager({
   harnessPort: port,
@@ -68,7 +77,9 @@ const mgr = new HarnessClientManager({
       s.deltas++;
       s.text += delta;
       if (s.deltas <= 3 || s.deltas % 5 === 0) {
-        console.log(`  ${ts()} ${icon} [${label}] delta #${s.deltas}: "${delta.slice(0, 40).replace(/\n/g, "\\n")}"`);
+        console.log(
+          `  ${ts()} ${icon} [${label}] delta #${s.deltas}: "${delta.slice(0, 40).replace(/\n/g, "\\n")}"`,
+        );
       }
     }
 
@@ -77,7 +88,9 @@ const mgr = new HarnessClientManager({
       const delta = String(p?.delta ?? "");
       s.deltas++;
       s.text += delta;
-      console.log(`  ${ts()} ${icon} [${label}] delta #${s.deltas}: "${delta.slice(0, 40).replace(/\n/g, "\\n")}"`);
+      console.log(
+        `  ${ts()} ${icon} [${label}] delta #${s.deltas}: "${delta.slice(0, 40).replace(/\n/g, "\\n")}"`,
+      );
     }
 
     if (raw.method === "turn/completed") {
@@ -102,14 +115,25 @@ async function run() {
   // Start both sessions
   console.log(`${ts()} Starting both sessions...`);
   await Promise.all([
-    mgr.startSession({ threadId: sessionA.threadId, provider: sessionA.provider, cwd, runtimeMode: "full-access" }),
-    mgr.startSession({ threadId: sessionB.threadId, provider: sessionB.provider, cwd, runtimeMode: "full-access" }),
+    mgr.startSession({
+      threadId: sessionA.threadId,
+      provider: sessionA.provider,
+      cwd,
+      runtimeMode: "full-access",
+    }),
+    mgr.startSession({
+      threadId: sessionB.threadId,
+      provider: sessionB.provider,
+      cwd,
+      runtimeMode: "full-access",
+    }),
   ]);
   console.log(`${ts()} Both sessions ready\n`);
   await new Promise((r) => setTimeout(r, 2000));
 
   // Send tasks concurrently
-  const task = "Write a short poem about the ocean, at least 8 lines. Take your time with each line. Do not use any tools.";
+  const task =
+    "Write a short poem about the ocean, at least 8 lines. Take your time with each line. Do not use any tools.";
   console.log(`${ts()} Sending task to both: "${task.slice(0, 60)}..."\n`);
 
   await Promise.all([
@@ -140,11 +164,20 @@ async function run() {
   // Wait for Session B to complete (or timeout)
   console.log(`\n${ts()} Waiting for Session B to complete...\n`);
   await new Promise<void>((resolve) => {
-    if (state.B.completed) { resolve(); return; }
+    if (state.B.completed) {
+      resolve();
+      return;
+    }
     const check = setInterval(() => {
-      if (state.B.completed) { clearInterval(check); resolve(); }
+      if (state.B.completed) {
+        clearInterval(check);
+        resolve();
+      }
     }, 300);
-    setTimeout(() => { clearInterval(check); resolve(); }, 30000);
+    setTimeout(() => {
+      clearInterval(check);
+      resolve();
+    }, 30000);
   });
 
   // Results
@@ -164,13 +197,19 @@ async function run() {
   console.log(`     Completed: ${state.B.completed}`);
   console.log(`     Response: "${state.B.text.slice(0, 100).replace(/\n/g, "\\n")}..."`);
   console.log(`${"═".repeat(60)}`);
-  console.log(`\n  ${passed ? "✅ PASS" : "❌ FAIL"}: ${
-    passed
-      ? "Session A killed → Session B completed independently. Crash isolation verified."
-      : state.B.completed ? "Both completed (kill was too late)." : "Session B did not complete."
-  }\n`);
+  console.log(
+    `\n  ${passed ? "✅ PASS" : "❌ FAIL"}: ${
+      passed
+        ? "Session A killed → Session B completed independently. Crash isolation verified."
+        : state.B.completed
+          ? "Both completed (kill was too late)."
+          : "Session B did not complete."
+    }\n`,
+  );
 
-  try { await mgr.stopSession(sessionB.threadId); } catch {}
+  try {
+    await mgr.stopSession(sessionB.threadId);
+  } catch {}
   mgr.disconnect();
 }
 

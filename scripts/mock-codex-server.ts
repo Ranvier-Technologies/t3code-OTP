@@ -31,7 +31,11 @@
 const DELTA_COUNT = Number(process.argv[2] || process.env.MOCK_DELTA_COUNT || 100);
 const DELTA_SIZE_KB = Number(process.argv[3] || process.env.MOCK_DELTA_SIZE_KB || 1);
 const DELAY_MS = Number(process.argv[4] || process.env.MOCK_DELAY_MS || 10);
-const MODE = (process.argv[5] || process.env.MOCK_MODE || "normal") as "normal" | "subagent" | "leak" | "crash";
+const MODE = (process.argv[5] || process.env.MOCK_MODE || "normal") as
+  | "normal"
+  | "subagent"
+  | "leak"
+  | "crash";
 
 let threadCounter = 0;
 let turnCounter = 0;
@@ -59,7 +63,8 @@ function generatePayload(sizeKb: number): string {
 
   while (totalLen < targetBytes) {
     // Each segment is unique to defeat dedup
-    const seg = `[${turnCounter}-${totalLen}]` +
+    const seg =
+      `[${turnCounter}-${totalLen}]` +
       Array.from({ length: 100 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
     segments.push(seg);
     totalLen += seg.length;

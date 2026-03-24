@@ -40,7 +40,7 @@ defmodule Harness.Snapshot.Session do
     status: :connecting | :ready | :running | :error | :closed,
     model: String.t() | nil,
     cwd: String.t() | nil,
-    runtime_mode: :approval_required | :full_access,
+    runtime_mode: :approval_required | :full_access | nil,
     active_turn: map() | nil,
     pending_requests: %{String.t() => map()},
     created_at: String.t() | nil,

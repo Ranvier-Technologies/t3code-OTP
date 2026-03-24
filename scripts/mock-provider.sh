@@ -84,7 +84,8 @@ while IFS= read -r line; do
         delta_text="Delta $i of $DELTAS"
         if [ -n "$garbage" ]; then
           # Include garbage in metadata (forces allocation in consumer)
-          send_notification "item/agentMessage/delta" "{\"delta\":\"$delta_text\",\"_garbage\":\"${garbage:0:1024}\"}"
+          garbage_bytes=$((MEMORY_KB * 1024))
+          send_notification "item/agentMessage/delta" "{\"delta\":\"$delta_text\",\"_garbage\":\"${garbage:0:$garbage_bytes}\"}"
         else
           send_notification "item/agentMessage/delta" "{\"delta\":\"$delta_text\"}"
         fi

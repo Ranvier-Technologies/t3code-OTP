@@ -198,7 +198,9 @@ export function getReasoningEffortOptions(
 
 export function getDefaultReasoningEffort(provider: "codex"): CodexReasoningEffort;
 export function getDefaultReasoningEffort(provider: "claudeAgent"): ClaudeCodeEffort;
-export function getDefaultReasoningEffort(provider?: ProviderKind): ProviderReasoningEffort | undefined;
+export function getDefaultReasoningEffort(
+  provider?: ProviderKind,
+): ProviderReasoningEffort | undefined;
 export function getDefaultReasoningEffort(
   provider: ProviderKind = "codex",
 ): ProviderReasoningEffort | undefined {

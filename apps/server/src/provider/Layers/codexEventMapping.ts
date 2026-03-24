@@ -410,7 +410,9 @@ export function codexEventBase(
   };
 }
 
-export function eventRawSource(event: ProviderEvent): NonNullable<ProviderRuntimeEvent["raw"]>["source"] {
+export function eventRawSource(
+  event: ProviderEvent,
+): NonNullable<ProviderRuntimeEvent["raw"]>["source"] {
   return event.kind === "request" ? "codex.app-server.request" : "codex.app-server.notification";
 }
 
@@ -511,6 +513,7 @@ const QUIET_UNMAPPED_EVENTS = new Set([
   "thinking",
   "codex/event/agent_message_delta",
   "codex/event/agent_message",
+  "codex/event/agent_message_content_delta",
   "codex/event/user_message",
 ]);
 
@@ -1314,22 +1317,6 @@ export function mapToRuntimeEvents(
         type: "content.delta" as const,
         payload: {
           streamKind: "command_output" as const,
-          delta,
-        },
-      },
-    ];
-  }
-
-  if (event.method === "codex/event/agent_message_content_delta") {
-    const msg = asObject(payload?.msg) ?? payload;
-    const delta = asString(msg?.delta);
-    if (!delta) return [];
-    return [
-      {
-        ...codexEventBase(event, canonicalThreadId),
-        type: "content.delta" as const,
-        payload: {
-          streamKind: "assistant_text" as const,
           delta,
         },
       },

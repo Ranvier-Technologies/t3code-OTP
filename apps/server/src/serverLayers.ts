@@ -1,6 +1,6 @@
 import * as path from "node:path";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { Effect, FileSystem, Layer } from "effect";
+import { Effect, FileSystem, Layer, Path } from "effect";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import { CheckpointDiffQueryLive } from "./checkpointing/Layers/CheckpointDiffQuery";
@@ -17,11 +17,15 @@ import { OrchestrationProjectionPipelineLive } from "./orchestration/Layers/Proj
 import { OrchestrationProjectionSnapshotQueryLive } from "./orchestration/Layers/ProjectionSnapshotQuery";
 import { ProviderRuntimeIngestionLive } from "./orchestration/Layers/ProviderRuntimeIngestion";
 import { RuntimeReceiptBusLive } from "./orchestration/Layers/RuntimeReceiptBus";
+import type { ProviderKind } from "@t3tools/contracts";
 import { ProviderUnsupportedError, type ProviderAdapterError } from "./provider/Errors";
+import type { ProviderAdapterShape } from "./provider/Services/ProviderAdapter";
 import { makeClaudeAdapterLive } from "./provider/Layers/ClaudeAdapter";
 import { makeCodexAdapterLive } from "./provider/Layers/CodexAdapter";
 import { makeHarnessClientAdapterLive } from "./provider/Layers/HarnessClientAdapter";
 import { HarnessClientAdapter } from "./provider/Services/HarnessClientAdapter";
+import { ClaudeAdapter } from "./provider/Services/ClaudeAdapter";
+import { CodexAdapter } from "./provider/Services/CodexAdapter";
 import { ProviderAdapterRegistryLive } from "./provider/Layers/ProviderAdapterRegistry";
 import { ProviderAdapterRegistry } from "./provider/Services/ProviderAdapterRegistry";
 import { makeProviderServiceLive } from "./provider/Layers/ProviderService";
@@ -36,17 +40,40 @@ import { GitCoreLive } from "./git/Layers/GitCore";
 import { GitHubCliLive } from "./git/Layers/GitHubCli";
 import { CodexTextGenerationLive } from "./git/Layers/CodexTextGeneration";
 import { GitServiceLive } from "./git/Layers/GitService";
-import { BunPtyAdapterLive } from "./terminal/Layers/BunPTY";
-import { NodePtyAdapterLive } from "./terminal/Layers/NodePTY";
+import { PtyAdapter } from "./terminal/Services/PTY";
 import { AnalyticsService } from "./telemetry/Services/AnalyticsService";
 
-export function makeServerProviderLayer(): Layer.Layer<
-  ProviderService,
-  ProviderUnsupportedError,
-  SqlClient.SqlClient | ServerConfig | FileSystem.FileSystem | AnalyticsService
-> {
+type RuntimePtyAdapterLoader = {
+  layer: Layer.Layer<PtyAdapter, never, FileSystem.FileSystem | Path.Path>;
+};
+
+const runtimePtyAdapterLoaders = {
+  bun: () => import("./terminal/Layers/BunPTY"),
+  node: () => import("./terminal/Layers/NodePTY"),
+} satisfies Record<string, () => Promise<RuntimePtyAdapterLoader>>;
+
+const makeRuntimePtyAdapterLayer = () =>
+  Effect.gen(function* () {
+    const runtime = process.versions.bun !== undefined && process.platform !== "win32" ? "bun" : "node";
+    const loader = runtimePtyAdapterLoaders[runtime];
+    const ptyAdapterModule = yield* Effect.promise<RuntimePtyAdapterLoader>(loader);
+    return ptyAdapterModule.layer;
+  }).pipe(Layer.unwrap);
+
+/**
+ * Provider layer: Claude and Codex always use the Node SDK adapters directly.
+ * When the Elixir harness is available (harnessPort configured), Cursor and
+ * OpenCode are additionally routed through it. Without harness, only Claude
+ * and Codex are available.
+ *
+ * This follows the "Model D" decision: Node SDK for providers with rich
+ * TypeScript SDKs (Claude Agent SDK, Codex CLI), Elixir harness only for
+ * providers where OTP adds clear value (Cursor, OpenCode).
+ */
+export function makeServerProviderLayer() {
   return Effect.gen(function* () {
-    const { providerEventLogPath } = yield* ServerConfig;
+    const serverConfig = yield* ServerConfig;
+    const { providerEventLogPath } = serverConfig;
     const nativeEventLogger = yield* makeEventNdjsonLogger(providerEventLogPath, {
       stream: "native",
     });
@@ -56,70 +83,66 @@ export function makeServerProviderLayer(): Layer.Layer<
     const providerSessionDirectoryLayer = ProviderSessionDirectoryLive.pipe(
       Layer.provide(ProviderSessionRuntimeRepositoryLive),
     );
+
+    // Node SDK adapters — always available
     const codexAdapterLayer = makeCodexAdapterLive(
       nativeEventLogger ? { nativeEventLogger } : undefined,
     );
     const claudeAdapterLayer = makeClaudeAdapterLive(
       nativeEventLogger ? { nativeEventLogger } : undefined,
     );
-    const adapterRegistryLayer = ProviderAdapterRegistryLive.pipe(
-      Layer.provide(codexAdapterLayer),
-      Layer.provide(claudeAdapterLayer),
-      Layer.provideMerge(providerSessionDirectoryLayer),
-    );
-    return makeProviderServiceLive(
-      canonicalEventLogger ? { canonicalEventLogger } : undefined,
-    ).pipe(Layer.provide(adapterRegistryLayer), Layer.provide(providerSessionDirectoryLayer));
-  }).pipe(Layer.unwrap);
-}
 
-/**
- * Provider layer backed by the Elixir HarnessService.
- * Uses HarnessClientAdapter which connects to the Elixir WS server
- * for provider session management (Codex, Claude, OpenCode).
- */
-export function makeHarnessProviderLayer() {
-  return Effect.gen(function* () {
-    const { stateDir } = yield* ServerConfig;
-    const providerLogsDir = path.join(stateDir, "logs", "provider");
-    const providerEventLogPath = path.join(providerLogsDir, "events.log");
-    const canonicalEventLogger = yield* makeEventNdjsonLogger(providerEventLogPath, {
-      stream: "canonical",
-    });
-    const providerSessionDirectoryLayer = ProviderSessionDirectoryLive.pipe(
-      Layer.provide(ProviderSessionRuntimeRepositoryLive),
-    );
-    // The harness adapter bridges all providers through Elixir.
-    // It implements ProviderAdapterShape for all provider kinds.
-    const harnessAdapterLayer = makeHarnessClientAdapterLive();
-    // Create provider-specific facades that share the same harness manager
-    // but report different `provider` values to the ProviderService.
-    const HARNESS_PROVIDERS = ["codex", "claudeAgent", "cursor", "opencode"] as const;
-    const adapterRegistryLayer = Layer.effect(
-      ProviderAdapterRegistry,
-      Effect.gen(function* () {
-        const baseAdapter = yield* HarnessClientAdapter;
-        const byProvider = new Map(
-          HARNESS_PROVIDERS.map((providerKind) => [
-            providerKind,
-            { ...baseAdapter, provider: providerKind } as typeof baseAdapter,
-          ]),
-        );
-        return {
-          getByProvider: (provider) => {
-            const adapter = byProvider.get(provider as (typeof HARNESS_PROVIDERS)[number]);
-            if (!adapter) {
-              return Effect.fail(new ProviderUnsupportedError({ provider }));
+    // Harness adapters — only when harnessPort is configured
+    const harnessEnabled = serverConfig.harnessPort !== undefined;
+    const HARNESS_ONLY_PROVIDERS = ["cursor", "opencode"] as const;
+
+    const adapterRegistryLayer = harnessEnabled
+      ? Layer.effect(
+          ProviderAdapterRegistry,
+          Effect.gen(function* () {
+            const codexAdapter = yield* CodexAdapter;
+            const claudeAdapter = yield* ClaudeAdapter;
+            const harnessBaseAdapter = yield* HarnessClientAdapter;
+
+            type Adapter = ProviderAdapterShape<ProviderAdapterError>;
+            const byProvider = new Map<string, Adapter>();
+
+            byProvider.set("codex", codexAdapter);
+            byProvider.set("claudeAgent", claudeAdapter);
+
+            for (const providerKind of HARNESS_ONLY_PROVIDERS) {
+              byProvider.set(providerKind, {
+                ...harnessBaseAdapter,
+                provider: providerKind,
+              } as Adapter);
             }
-            return Effect.succeed(adapter);
-          },
-          listProviders: () => Effect.sync(() => [...HARNESS_PROVIDERS]),
-        };
-      }),
-    ).pipe(
-      Layer.provide(harnessAdapterLayer),
-      Layer.provideMerge(providerSessionDirectoryLayer),
-    );
+
+            return {
+              getByProvider: (provider) => {
+                const adapter = byProvider.get(provider);
+                if (!adapter) {
+                  return Effect.fail(new ProviderUnsupportedError({ provider }));
+                }
+                return Effect.succeed(adapter);
+              },
+              listProviders: () =>
+                Effect.sync(
+                  () => Array.from(byProvider.keys()) as unknown as readonly ProviderKind[],
+                ),
+            };
+          }),
+        ).pipe(
+          Layer.provide(codexAdapterLayer),
+          Layer.provide(claudeAdapterLayer),
+          Layer.provide(makeHarnessClientAdapterLive()),
+          Layer.provideMerge(providerSessionDirectoryLayer),
+        )
+      : ProviderAdapterRegistryLive.pipe(
+          Layer.provide(codexAdapterLayer),
+          Layer.provide(claudeAdapterLayer),
+          Layer.provideMerge(providerSessionDirectoryLayer),
+        );
+
     return makeProviderServiceLive(
       canonicalEventLogger ? { canonicalEventLogger } : undefined,
     ).pipe(Layer.provide(adapterRegistryLayer), Layer.provide(providerSessionDirectoryLayer));
@@ -165,13 +188,7 @@ export function makeServerRuntimeServicesLayer() {
     Layer.provideMerge(checkpointReactorLayer),
   );
 
-  const terminalLayer = TerminalManagerLive.pipe(
-    Layer.provide(
-      typeof Bun !== "undefined" && process.platform !== "win32"
-        ? BunPtyAdapterLive
-        : NodePtyAdapterLive,
-    ),
-  );
+  const terminalLayer = TerminalManagerLive.pipe(Layer.provide(makeRuntimePtyAdapterLayer()));
 
   const gitManagerLayer = GitManagerLive.pipe(
     Layer.provideMerge(gitCoreLayer),

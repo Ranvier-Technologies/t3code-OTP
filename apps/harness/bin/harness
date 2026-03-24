@@ -116,8 +116,7 @@ run_against_harness() {
 
 cmd_compile() {
   step "Compiling Elixir harness"
-  cd "$SCRIPT_DIR" && mix compile 2>&1
-  if [ $? -eq 0 ]; then
+  if cd "$SCRIPT_DIR" && mix compile 2>&1; then
     ok "Compiled successfully"
   else
     fail "Compilation failed"

@@ -17,7 +17,10 @@
  *   T3CODE_HARNESS_SECRET (default: dev-harness-secret)
  */
 
-import { HarnessClientManager, type HarnessRawEvent } from "../apps/server/src/provider/Layers/HarnessClientManager.ts";
+import {
+  HarnessClientManager,
+  type HarnessRawEvent,
+} from "../apps/server/src/provider/Layers/HarnessClientManager.ts";
 import { mapToRuntimeEvents } from "../apps/server/src/provider/Layers/codexEventMapping.ts";
 
 const provider = process.argv[2] || "codex";
@@ -32,7 +35,13 @@ const t0 = Date.now();
 const ts = () => `+${((Date.now() - t0) / 1000).toFixed(1)}s`;
 
 // Event collector
-const events: Array<{ ts: string; kind: string; method: string; turnId?: string; payload: unknown }> = [];
+const events: Array<{
+  ts: string;
+  kind: string;
+  method: string;
+  turnId?: string;
+  payload: unknown;
+}> = [];
 
 console.log(`\n=== Provider Debug: ${provider} ===`);
 console.log(`Thread: ${threadId}`);
@@ -89,7 +98,10 @@ function summarize(method: string, payload: Record<string, unknown> | undefined)
     return text ? ` "${text.slice(0, 50)}"` : "";
   }
   if (method === "item/completed" || method === "item/started") {
-    const itemType = (payload.itemType as string) ?? ((payload.item as Record<string, unknown>)?.type as string) ?? "?";
+    const itemType =
+      (payload.itemType as string) ??
+      ((payload.item as Record<string, unknown>)?.type as string) ??
+      "?";
     return ` type=${itemType}`;
   }
   return "";
@@ -159,8 +171,13 @@ async function run() {
     methods.set(e.method, (methods.get(e.method) ?? 0) + 1);
   }
   for (const [method, count] of [...methods.entries()].sort()) {
-    const turnIds = new Set(events.filter((e) => e.method === method && e.turnId).map((e) => e.turnId));
-    const turnTag = turnIds.size > 0 ? ` (turnId: ${[...turnIds].map((t) => t!.slice(0, 8)).join(", ")})` : " (NO turnId)";
+    const turnIds = new Set(
+      events.filter((e) => e.method === method && e.turnId).map((e) => e.turnId),
+    );
+    const turnTag =
+      turnIds.size > 0
+        ? ` (turnId: ${[...turnIds].map((t) => t!.slice(0, 8)).join(", ")})`
+        : " (NO turnId)";
     console.log(`  ${method}: ${count}x${turnTag}`);
   }
 

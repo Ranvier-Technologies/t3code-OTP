@@ -13,7 +13,7 @@ import {
 import * as Schema from "effect/Schema";
 import * as Equal from "effect/Equal";
 import { DeepMutable } from "effect/Types";
-import { normalizeModelSlug } from "@t3tools/shared/model";
+import { inferProviderForModel, normalizeModelSlug } from "@t3tools/shared/model";
 import { getLocalStorageItem } from "./hooks/useLocalStorage";
 import { DEFAULT_INTERACTION_MODE, DEFAULT_RUNTIME_MODE, type ChatImageAttachment } from "./types";
 import {
@@ -715,7 +715,7 @@ function migratePersistedComposerDraftStoreState(
   const rawProjectDraftThreadIdByProjectId = candidate.projectDraftThreadIdByProjectId;
   const stickyModel =
     typeof candidate.stickyModel === "string"
-      ? (normalizeModelSlug(candidate.stickyModel, "codex") ?? null)
+      ? (normalizeModelSlug(candidate.stickyModel, inferProviderForModel(candidate.stickyModel)) ?? null)
       : null;
   const stickyModelOptions =
     normalizeProviderModelOptions(candidate.stickyModelOptions) ?? EMPTY_PROVIDER_MODEL_OPTIONS;
@@ -810,7 +810,7 @@ function normalizeCurrentPersistedComposerDraftStoreState(
     );
   const stickyModel =
     typeof normalizedPersistedState.stickyModel === "string"
-      ? (normalizeModelSlug(normalizedPersistedState.stickyModel, "codex") ?? null)
+      ? (normalizeModelSlug(normalizedPersistedState.stickyModel, inferProviderForModel(normalizedPersistedState.stickyModel)) ?? null)
       : null;
   const stickyModelOptions =
     normalizeProviderModelOptions(normalizedPersistedState.stickyModelOptions) ??
@@ -1166,7 +1166,7 @@ export const useComposerDraftStore = create<ComposerDraftStoreState>()(
         });
       },
       setStickyModel: (model) => {
-        const normalizedModel = normalizeModelSlug(model, "codex") ?? null;
+        const normalizedModel = normalizeModelSlug(model, inferProviderForModel(model)) ?? null;
         set((state) => {
           if (state.stickyModel === normalizedModel) {
             return state;

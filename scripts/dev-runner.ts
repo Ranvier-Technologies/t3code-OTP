@@ -162,7 +162,7 @@ export function createDevRunnerEnv({
 
     // Elixir HarnessService — opt-in via T3CODE_HARNESS_PORT env var
     if (baseEnv.T3CODE_HARNESS_PORT !== undefined) {
-      output.T3CODE_HARNESS_PORT = baseEnv.T3CODE_HARNESS_PORT;
+      output.T3CODE_HARNESS_PORT = String(harnessPort);
       output.T3CODE_HARNESS_SECRET = baseEnv.T3CODE_HARNESS_SECRET ?? "dev-harness-secret";
     }
 

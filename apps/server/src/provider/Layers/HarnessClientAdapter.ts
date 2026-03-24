@@ -77,7 +77,10 @@ function waitForHarnessReady(port: number, timeoutMs: number): Promise<void> {
         resolve();
       });
       req.on("error", () => setTimeout(probe, 200));
-      req.setTimeout(500, () => { req.destroy(); setTimeout(probe, 200); });
+      req.setTimeout(500, () => {
+        req.destroy();
+        setTimeout(probe, 200);
+      });
     }
     probe();
   });
@@ -115,7 +118,7 @@ function toSessionError(
   cause: unknown,
 ): ProviderAdapterSessionNotFoundError | ProviderAdapterSessionClosedError | undefined {
   const normalized = toMessage(cause, "").toLowerCase();
-  if (normalized.includes("unknown session") || normalized.includes("unknown provider session")) {
+  if (normalized.includes("unknown session") || normalized.includes("unknown provider session") || normalized.includes("session not found")) {
     return new ProviderAdapterSessionNotFoundError({
       provider: DEFAULT_PROVIDER,
       threadId,
@@ -164,9 +167,7 @@ function asArray(value: unknown): unknown[] | undefined {
   return Array.isArray(value) ? value : undefined;
 }
 
-function toSessionStatus(
-  raw: unknown,
-): "connecting" | "ready" | "running" | "error" | "closed" {
+function toSessionStatus(raw: unknown): "connecting" | "ready" | "running" | "error" | "closed" {
   switch (raw) {
     case "connecting":
     case "ready":
@@ -183,7 +184,11 @@ function toRuntimeMode(raw: unknown): "approval-required" | "full-access" {
   return raw === "full-access" ? "full-access" : "approval-required";
 }
 
-function coerceSession(raw: unknown, threadId: ThreadId, providerOverride?: ProviderKind): ProviderSession {
+function coerceSession(
+  raw: unknown,
+  threadId: ThreadId,
+  providerOverride?: ProviderKind,
+): ProviderSession {
   const obj = asObject(raw) ?? {};
   const now = new Date().toISOString() as IsoDateTime;
   return {
@@ -207,8 +212,7 @@ function coerceSession(raw: unknown, threadId: ThreadId, providerOverride?: Prov
 
 function coerceTurnStartResult(raw: unknown, threadId: ThreadId): ProviderTurnStartResult {
   const obj = asObject(raw) ?? {};
-  const turnId =
-    asString(obj.turn_id ?? obj.turnId) ?? `harness-turn-${Date.now()}`;
+  const turnId = asString(obj.turn_id ?? obj.turnId) ?? `harness-turn-${Date.now()}`;
   return {
     threadId,
     turnId: turnId as TurnId,
@@ -241,9 +245,9 @@ function rawToProviderEvent(raw: HarnessRawEvent): ProviderEvent {
   return {
     id: raw.eventId as EventId,
     kind: (raw.kind === "session" ||
-      raw.kind === "notification" ||
-      raw.kind === "request" ||
-      raw.kind === "error"
+    raw.kind === "notification" ||
+    raw.kind === "request" ||
+    raw.kind === "error"
       ? raw.kind
       : "notification") as ProviderEvent["kind"],
     provider: raw.provider as ProviderKind,
@@ -251,24 +255,46 @@ function rawToProviderEvent(raw: HarnessRawEvent): ProviderEvent {
     createdAt: raw.createdAt as IsoDateTime,
     method: raw.method,
     ...(asString(payload.message) ? { message: asString(payload.message) } : {}),
-    ...(asString(payload.turn_id ?? payload.turnId ?? asObject(payload.turn)?.id ?? asObject(payload.msg)?.turn_id ?? asObject(payload.msg)?.turnId)
-      ? { turnId: asString(payload.turn_id ?? payload.turnId ?? asObject(payload.turn)?.id ?? asObject(payload.msg)?.turn_id ?? asObject(payload.msg)?.turnId) as TurnId }
+    ...(asString(
+      payload.turn_id ??
+        payload.turnId ??
+        asObject(payload.turn)?.id ??
+        asObject(payload.msg)?.turn_id ??
+        asObject(payload.msg)?.turnId,
+    )
+      ? {
+          turnId: asString(
+            payload.turn_id ??
+              payload.turnId ??
+              asObject(payload.turn)?.id ??
+              asObject(payload.msg)?.turn_id ??
+              asObject(payload.msg)?.turnId,
+          ) as TurnId,
+        }
       : {}),
-    ...(asString(payload.item_id ?? payload.itemId ?? asObject(payload.msg)?.item_id ?? asObject(payload.msg)?.itemId)
-      ? { itemId: asString(payload.item_id ?? payload.itemId ?? asObject(payload.msg)?.item_id ?? asObject(payload.msg)?.itemId) as ProviderItemId }
+    ...(asString(
+      payload.item_id ??
+        payload.itemId ??
+        asObject(payload.msg)?.item_id ??
+        asObject(payload.msg)?.itemId,
+    )
+      ? {
+          itemId: asString(
+            payload.item_id ??
+              payload.itemId ??
+              asObject(payload.msg)?.item_id ??
+              asObject(payload.msg)?.itemId,
+          ) as ProviderItemId,
+        }
       : {}),
     ...(asString(payload.request_id ?? payload.requestId)
       ? {
-          requestId: asString(
-            payload.request_id ?? payload.requestId,
-          ) as ApprovalRequestId,
+          requestId: asString(payload.request_id ?? payload.requestId) as ApprovalRequestId,
         }
       : {}),
     ...(asString(payload.request_kind ?? payload.requestKind)
       ? {
-          requestKind: asString(
-            payload.request_kind ?? payload.requestKind,
-          ) as ProviderRequestKind,
+          requestKind: asString(payload.request_kind ?? payload.requestKind) as ProviderRequestKind,
         }
       : {}),
     ...(asString(payload.text_delta ?? payload.textDelta)
@@ -393,7 +419,10 @@ function mapHarnessEventToRuntimeEvents(
 
     const requestType = asString(payload?.requestType) ?? "unknown";
     const detail =
-      asString(payload?.detail) ?? asString(payload?.command) ?? asString(payload?.reason) ?? asString(payload?.prompt);
+      asString(payload?.detail) ??
+      asString(payload?.command) ??
+      asString(payload?.reason) ??
+      asString(payload?.prompt);
     return [
       {
         ...runtimeEventBase(event, canonicalThreadId),
@@ -488,8 +517,7 @@ function mapHarnessEventToRuntimeEvents(
   // Thread lifecycle
   // -------------------------------------------------------------------------
   if (event.method === "thread/started") {
-    const payloadThreadId =
-      asString(asObject(payload?.thread)?.id) ?? asString(payload?.threadId);
+    const payloadThreadId = asString(asObject(payload?.thread)?.id) ?? asString(payload?.threadId);
     if (!payloadThreadId) return [];
     return [
       {
@@ -571,9 +599,7 @@ function mapHarnessEventToRuntimeEvents(
     const errorMessage = asString(asObject(turn?.error)?.message);
     const status = asString(turn?.status);
     const turnStatus: "completed" | "failed" | "cancelled" | "interrupted" =
-      status === "failed" ||
-      status === "cancelled" ||
-      status === "interrupted"
+      status === "failed" || status === "cancelled" || status === "interrupted"
         ? status
         : "completed";
     return [
@@ -630,7 +656,8 @@ function mapHarnessEventToRuntimeEvents(
         ...runtimeEventBase(event, canonicalThreadId),
         type: "item.started" as const,
         payload: {
-          itemType: (asString(payload?.itemType) ?? "dynamic_tool_call") as ItemLifecyclePayload["itemType"],
+          itemType: (asString(payload?.itemType) ??
+            "dynamic_tool_call") as ItemLifecyclePayload["itemType"],
           ...(asString(payload?.toolName) ? { title: asString(payload?.toolName) } : {}),
         },
       },
@@ -642,7 +669,8 @@ function mapHarnessEventToRuntimeEvents(
         ...runtimeEventBase(event, canonicalThreadId),
         type: "item.updated" as const,
         payload: {
-          itemType: (asString(payload?.itemType) ?? "dynamic_tool_call") as ItemLifecyclePayload["itemType"],
+          itemType: (asString(payload?.itemType) ??
+            "dynamic_tool_call") as ItemLifecyclePayload["itemType"],
           ...(asString(payload?.toolName) ? { title: asString(payload?.toolName) } : {}),
         },
       },
@@ -653,8 +681,11 @@ function mapHarnessEventToRuntimeEvents(
     // Never default to "assistant_message" — that creates phantom empty responses
     // when providers send item/completed for non-text items without itemType.
     const item = asObject(payload?.item);
-    const resolvedItemType = asString(payload?.itemType) ??
-      asString(item?.type) ?? asString(item?.kind) ?? "dynamic_tool_call";
+    const resolvedItemType =
+      asString(payload?.itemType) ??
+      asString(item?.type) ??
+      asString(item?.kind) ??
+      "dynamic_tool_call";
     return [
       {
         ...runtimeEventBase(event, canonicalThreadId),
@@ -662,6 +693,80 @@ function mapHarnessEventToRuntimeEvents(
         payload: {
           itemType: resolvedItemType as ItemLifecyclePayload["itemType"],
           ...(asString(payload?.toolName) ? { title: asString(payload?.toolName) } : {}),
+        },
+      },
+    ];
+  }
+
+  // -------------------------------------------------------------------------
+  // Subagent lifecycle (OpenCode child sessions, Codex collaboration,
+  // Claude task_progress/task_notification from --print mode)
+  // -------------------------------------------------------------------------
+  if (event.method === "collab_agent_spawn_begin") {
+    const agentName = asString(payload?.agentName) ?? "subagent";
+    return [
+      {
+        ...runtimeEventBase(event, canonicalThreadId),
+        type: "item.started" as const,
+        payload: {
+          itemType: "collab_agent_tool_call" as ItemLifecyclePayload["itemType"],
+          ...(agentName ? { title: agentName } : {}),
+        },
+      },
+    ];
+  }
+
+  // Claude --print mode emits task_progress/task_notification as system messages
+  // that pass through the Elixir harness without the "codex/event/" prefix.
+  if (event.method === "task_progress") {
+    const description = asString(payload?.description) ?? "";
+    const lastToolName = asString(payload?.last_tool_name);
+    if (!description && !lastToolName) return [];
+    return [
+      {
+        ...runtimeEventBase(event, canonicalThreadId),
+        type: "item.started" as const,
+        payload: {
+          itemType: (lastToolName ? "dynamic_tool_call" : "collab_agent_tool_call") as ItemLifecyclePayload["itemType"],
+          ...(lastToolName ? { title: lastToolName } : {}),
+          ...(description ? { detail: description } : {}),
+        },
+      },
+    ];
+  }
+  if (event.method === "task_notification") {
+    const summary = asString(payload?.summary) ?? "";
+    return [
+      {
+        ...runtimeEventBase(event, canonicalThreadId),
+        type: "item.completed" as const,
+        payload: {
+          itemType: "collab_agent_tool_call" as ItemLifecyclePayload["itemType"],
+          ...(summary ? { title: summary } : {}),
+        },
+      },
+    ];
+  }
+  if (event.method === "collab_waiting_begin") {
+    return [
+      {
+        ...runtimeEventBase(event, canonicalThreadId),
+        type: "item.started" as const,
+        payload: {
+          itemType: "collab_agent_tool_call" as ItemLifecyclePayload["itemType"],
+          title: "Waiting for subagent",
+        },
+      },
+    ];
+  }
+  if (event.method === "collab_waiting_end") {
+    return [
+      {
+        ...runtimeEventBase(event, canonicalThreadId),
+        type: "item.completed" as const,
+        payload: {
+          itemType: "collab_agent_tool_call" as ItemLifecyclePayload["itemType"],
+          title: "Subagent completed",
         },
       },
     ];
@@ -681,7 +786,13 @@ function mapHarnessEventToRuntimeEvents(
         ...runtimeEventBase(event, canonicalThreadId),
         type: "content.delta",
         payload: {
-          streamKind: streamKind as "assistant_text" | "reasoning_text" | "reasoning_summary_text" | "command_output" | "file_change_output" | "plan_text",
+          streamKind: streamKind as
+            | "assistant_text"
+            | "reasoning_text"
+            | "reasoning_summary_text"
+            | "command_output"
+            | "file_change_output"
+            | "plan_text",
           delta,
         },
       },
@@ -701,7 +812,12 @@ function mapHarnessEventToRuntimeEvents(
       asString(payload?.text) ??
       asString(asObject(payload?.content)?.text);
     if (!delta || delta.length === 0) return [];
-    const streamKind: ProviderRuntimeEvent extends { type: "content.delta"; payload: { streamKind: infer K } } ? K : string =
+    const streamKind: ProviderRuntimeEvent extends {
+      type: "content.delta";
+      payload: { streamKind: infer K };
+    }
+      ? K
+      : string =
       event.method === "item/reasoning/textDelta"
         ? "reasoning_text"
         : event.method === "item/reasoning/summaryTextDelta"
@@ -716,7 +832,13 @@ function mapHarnessEventToRuntimeEvents(
         ...runtimeEventBase(event, canonicalThreadId),
         type: "content.delta",
         payload: {
-          streamKind: streamKind as "assistant_text" | "reasoning_text" | "reasoning_summary_text" | "command_output" | "file_change_output" | "plan_text",
+          streamKind: streamKind as
+            | "assistant_text"
+            | "reasoning_text"
+            | "reasoning_summary_text"
+            | "command_output"
+            | "file_change_output"
+            | "plan_text",
           delta,
           ...(typeof payload?.contentIndex === "number"
             ? { contentIndex: payload.contentIndex }
@@ -827,8 +949,7 @@ export function makeHarnessClientAdapterLive(options?: HarnessClientAdapterLiveO
     Effect.gen(function* () {
       const serverConfig = yield* Effect.service(ServerConfig);
 
-      const harnessPort =
-        options?.harnessPort ?? serverConfig.harnessPort ?? DEFAULT_HARNESS_PORT;
+      const harnessPort = options?.harnessPort ?? serverConfig.harnessPort ?? DEFAULT_HARNESS_PORT;
       const harnessSecret =
         options?.harnessSecret ?? serverConfig.harnessSecret ?? DEFAULT_HARNESS_SECRET;
 
@@ -857,9 +978,7 @@ export function makeHarnessClientAdapterLive(options?: HarnessClientAdapterLiveO
 
           // The Elixir HarnessService must be started externally before the Node server.
           // In dev: cd apps/harness && T3CODE_HARNESS_PORT=4383 mix phx.server
-          yield* Effect.log(
-            `Connecting to Elixir HarnessService on port ${harnessPort}...`,
-          );
+          yield* Effect.log(`Connecting to Elixir HarnessService on port ${harnessPort}...`);
 
           // Wait for Phoenix to be ready by probing the health endpoint.
           // Falls back to a fixed delay if the probe doesn't succeed in time.
@@ -899,9 +1018,7 @@ export function makeHarnessClientAdapterLive(options?: HarnessClientAdapterLiveO
               );
             },
             onReconnect: () => {
-              void Effect.runPromise(
-                Effect.logInfo("[harness] WebSocket reconnected"),
-              );
+              void Effect.runPromise(Effect.logInfo("[harness] WebSocket reconnected"));
             },
           });
 
@@ -951,7 +1068,14 @@ export function makeHarnessClientAdapterLive(options?: HarnessClientAdapterLiveO
               detail: toMessage(cause, "Failed to start harness session."),
               cause,
             }),
-        }).pipe(Effect.map((raw) => coerceSession(raw, input.threadId, input.provider as ProviderKind)));
+        }).pipe(
+          Effect.tap(() =>
+            Effect.sync(() => {
+              sessionListCache = null;
+            }),
+          ),
+          Effect.map((raw) => coerceSession(raw, input.threadId, input.provider as ProviderKind)),
+        );
       };
 
       const sendTurn: HarnessClientAdapterShape["sendTurn"] = (input) =>
@@ -995,11 +1119,7 @@ export function makeHarnessClientAdapterLive(options?: HarnessClientAdapterLiveO
       ) =>
         Effect.tryPromise({
           try: () =>
-            manager.respondToUserInput(
-              threadId,
-              requestId,
-              answers as Record<string, unknown>,
-            ),
+            manager.respondToUserInput(threadId, requestId, answers as Record<string, unknown>),
           catch: (cause) => toRequestError(threadId, "item/tool/requestUserInput", cause),
         });
 
@@ -1007,7 +1127,13 @@ export function makeHarnessClientAdapterLive(options?: HarnessClientAdapterLiveO
         Effect.tryPromise({
           try: () => manager.stopSession(threadId),
           catch: (cause) => toRequestError(threadId, "session/stop", cause),
-        });
+        }).pipe(
+          Effect.tap(() =>
+            Effect.sync(() => {
+              sessionListCache = null;
+            }),
+          ),
+        );
 
       // Cache listSessions to reduce polling pressure on the Elixir harness.
       // hasSession() calls listSessions() on every check — without caching this
@@ -1022,10 +1148,19 @@ export function makeHarnessClientAdapterLive(options?: HarnessClientAdapterLiveO
         }
         return Effect.tryPromise({
           try: () => manager.listSessions(),
-          catch: () => new ProviderAdapterRequestError({ provider: DEFAULT_PROVIDER, method: "listSessions", detail: "Failed to list sessions" }),
+          catch: () =>
+            new ProviderAdapterRequestError({
+              provider: DEFAULT_PROVIDER,
+              method: "listSessions",
+              detail: "Failed to list sessions",
+            }),
         }).pipe(
           Effect.map((raw) => coerceSessionList(raw)),
-          Effect.tap((sessions) => Effect.sync(() => { sessionListCache = { sessions, ts: Date.now() }; })),
+          Effect.tap((sessions) =>
+            Effect.sync(() => {
+              sessionListCache = { sessions, ts: Date.now() };
+            }),
+          ),
           Effect.orElseSucceed(() => [] as ReadonlyArray<ProviderSession>),
         );
       };

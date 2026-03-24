@@ -41,8 +41,8 @@ defmodule Harness.SnapshotServerTest do
 
     SnapshotServer.apply_event(event)
 
-    # Give the cast time to process
-    Process.sleep(10)
+    # Force mailbox flush — deterministic alternative to Process.sleep
+    :sys.get_state(Harness.SnapshotServer)
 
     snapshot = SnapshotServer.get_snapshot()
     assert snapshot.sequence == initial_seq + 1

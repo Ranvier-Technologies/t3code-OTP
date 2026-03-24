@@ -26,7 +26,12 @@ import {
   ProviderCommandReactor,
   type ProviderCommandReactorShape,
 } from "../Services/ProviderCommandReactor.ts";
-import { inferProviderForModel, resolveModelSlugForProvider, getModelOptions, getDefaultModel } from "@t3tools/shared/model";
+import {
+  inferProviderForModel,
+  resolveModelSlugForProvider,
+  getModelOptions,
+  getDefaultModel,
+} from "@t3tools/shared/model";
 
 type ProviderIntentEvent = Extract<
   OrchestrationEvent,
@@ -243,7 +248,11 @@ const make = Effect.gen(function* () {
         : options?.provider !== undefined
           ? options.provider
           : inferredProvider;
-    if (currentProvider !== undefined && options?.provider !== undefined && options.provider !== currentProvider) {
+    if (
+      currentProvider !== undefined &&
+      options?.provider !== undefined &&
+      options.provider !== currentProvider
+    ) {
       return yield* new ProviderAdapterRequestError({
         provider: currentProvider,
         method: "thread.turn.start",
@@ -257,13 +266,15 @@ const make = Effect.gen(function* () {
       // Cursor and OpenCode use dynamic model discovery — their available
       // models are fetched from the CLI at runtime and aren't in the static
       // MODEL_OPTIONS_BY_PROVIDER set. Accept any model string for these providers.
-      const providerUsesDynamicModels = threadProvider === "cursor" || threadProvider === "opencode";
+      const providerUsesDynamicModels =
+        threadProvider === "cursor" || threadProvider === "opencode";
       if (!providerUsesDynamicModels) {
         // Only reject if the model is truly foreign — not if it's ambiguous
         // (e.g. "auto" exists in both cursor and opencode model sets).
         const resolvedForThread = resolveModelSlugForProvider(threadProvider, options.model);
         const modelSetForThread = getModelOptions(threadProvider).map((o) => o.slug);
-        const isKnownByThread = modelSetForThread.includes(options.model as typeof modelSetForThread[number]) ||
+        const isKnownByThread =
+          modelSetForThread.includes(options.model as (typeof modelSetForThread)[number]) ||
           resolvedForThread !== getDefaultModel(threadProvider) ||
           options.model === resolvedForThread;
         if (!isKnownByThread) {

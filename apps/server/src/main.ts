@@ -22,7 +22,6 @@ import { Open } from "./open";
 import * as SqlitePersistence from "./persistence/Layers/Sqlite";
 import {
   makeServerProviderLayer,
-  makeHarnessProviderLayer,
   makeServerRuntimeServicesLayer,
 } from "./serverLayers";
 import { ProjectionSnapshotQuery } from "./orchestration/Services/ProjectionSnapshotQuery";
@@ -204,12 +203,8 @@ const ServerConfigLive = (input: CliInput) =>
   );
 
 const LayerLive = (input: CliInput) => {
-  // Use Elixir HarnessService when T3CODE_HARNESS_PORT is configured,
-  // otherwise fall back to direct Codex-only provider layer
-  const providerLayer =
-    process.env.T3CODE_HARNESS_PORT !== undefined
-      ? makeHarnessProviderLayer()
-      : makeServerProviderLayer();
+  // Claude + Codex via Node SDK, Cursor + OpenCode via Elixir harness.
+  const providerLayer = makeServerProviderLayer();
 
   return Layer.empty.pipe(
     Layer.provideMerge(makeServerRuntimeServicesLayer()),

@@ -25,7 +25,9 @@ let HarnessClientManager: any;
 try {
   const mod = await import("../apps/server/src/provider/Layers/HarnessClientManager.ts");
   HarnessClientManager = mod.HarnessClientManager;
-} catch {}
+} catch (err) {
+  console.warn("Failed to import HarnessClientManager:", err);
+}
 
 // ---------------------------------------------------------------------------
 // Config
@@ -82,22 +84,39 @@ function createStats(id: string, role: "victim" | "survivor"): SessionStats {
 
 async function runNode() {
   const allStats: SessionStats[] = [];
-  const sessions = new Map<string, {
-    child: ChildProcessWithoutNullStreams;
-    rl: readline.Interface;
-    pending: Map<number, any>;
-    nextId: number;
-    codexThreadId: string | null;
-  }>();
+  const sessions = new Map<
+    string,
+    {
+      child: ChildProcessWithoutNullStreams;
+      rl: readline.Interface;
+      pending: Map<number, any>;
+      nextId: number;
+      codexThreadId: string | null;
+    }
+  >();
 
   function spawnMock(id: string, mode: string, deltaCount: number) {
-    const child = spawn("bun", [
-      "run", "scripts/mock-codex-server.ts",
-      String(deltaCount), String(DELTA_SIZE_KB), String(DELAY_MS), mode,
-    ], { cwd: process.cwd(), env: process.env, stdio: ["pipe", "pipe", "pipe"] });
+    const child = spawn(
+      "bun",
+      [
+        "run",
+        "scripts/mock-codex-server.ts",
+        String(deltaCount),
+        String(DELTA_SIZE_KB),
+        String(DELAY_MS),
+        mode,
+      ],
+      { cwd: process.cwd(), env: process.env, stdio: ["pipe", "pipe", "pipe"] },
+    );
 
     const rl = readline.createInterface({ input: child.stdout });
-    const session = { child, rl, pending: new Map<number, any>(), nextId: 1, codexThreadId: null as string | null };
+    const session = {
+      child,
+      rl,
+      pending: new Map<number, any>(),
+      nextId: 1,
+      codexThreadId: null as string | null,
+    };
     sessions.set(id, session);
     child.stderr?.resume();
     return session;
@@ -106,10 +125,19 @@ async function runNode() {
   function rpc(session: ReturnType<typeof spawnMock>, method: string, params: any) {
     return new Promise<any>((resolve, reject) => {
       const id = session.nextId++;
-      const timer = setTimeout(() => { session.pending.delete(id); reject(new Error("timeout")); }, 30000);
+      const timer = setTimeout(() => {
+        session.pending.delete(id);
+        reject(new Error("timeout"));
+      }, 30000);
       session.pending.set(id, {
-        resolve: (v: any) => { clearTimeout(timer); resolve(v); },
-        reject: (e: any) => { clearTimeout(timer); reject(e); },
+        resolve: (v: any) => {
+          clearTimeout(timer);
+          resolve(v);
+        },
+        reject: (e: any) => {
+          clearTimeout(timer);
+          reject(e);
+        },
       });
       session.child.stdin.write(JSON.stringify({ jsonrpc: "2.0", id, method, params }) + "\n");
     });
@@ -126,7 +154,10 @@ async function runNode() {
       const msg = JSON.parse(line);
       if (msg.id != null) {
         const p = victimSession.pending.get(msg.id);
-        if (p) { victimSession.pending.delete(msg.id); p.resolve(msg.result ?? msg.error); }
+        if (p) {
+          victimSession.pending.delete(msg.id);
+          if (msg.error) { p.reject(new Error(typeof msg.error === "object" ? JSON.stringify(msg.error) : String(msg.error))); } else { p.resolve(msg.result); }
+        }
         return;
       }
       if (msg.method === "item/agentMessage/delta") victimStats.deltaCount++;
@@ -140,13 +171,17 @@ async function runNode() {
     log(`VICTIM CRASHED (exit code ${code}) after ${victimStats.deltaCount} deltas`);
   });
 
-  await rpc(victimSession, "initialize", { clientInfo: { name: "stress", version: "1.0" }, capabilities: {} });
+  await rpc(victimSession, "initialize", {
+    clientInfo: { name: "stress", version: "1.0" },
+    capabilities: {},
+  });
   victimSession.child.stdin.write(JSON.stringify({ jsonrpc: "2.0", method: "initialized" }) + "\n");
   const victimThread = await rpc(victimSession, "thread/start", { cwd: process.cwd() });
   victimSession.codexThreadId = victimThread?.thread?.id ?? null;
 
   // Start survivor sessions (normal mode, will complete)
-  const survivorSessions: Array<{ session: ReturnType<typeof spawnMock>; stats: SessionStats }> = [];
+  const survivorSessions: Array<{ session: ReturnType<typeof spawnMock>; stats: SessionStats }> =
+    [];
   for (let i = 0; i < SURVIVOR_COUNT; i++) {
     const sid = `survivor-node-${i}-${Date.now()}`;
     const stats = createStats(sid, "survivor");
@@ -158,7 +193,10 @@ async function runNode() {
         const msg = JSON.parse(line);
         if (msg.id != null) {
           const p = session.pending.get(msg.id);
-          if (p) { session.pending.delete(msg.id); p.resolve(msg.result ?? msg.error); }
+          if (p) {
+            session.pending.delete(msg.id);
+            if (msg.error) { p.reject(new Error(typeof msg.error === "object" ? JSON.stringify(msg.error) : String(msg.error))); } else { p.resolve(msg.result); }
+          }
           return;
         }
         if (msg.method === "item/agentMessage/delta") {
@@ -170,7 +208,10 @@ async function runNode() {
       } catch {}
     });
 
-    await rpc(session, "initialize", { clientInfo: { name: "stress", version: "1.0" }, capabilities: {} });
+    await rpc(session, "initialize", {
+      clientInfo: { name: "stress", version: "1.0" },
+      capabilities: {},
+    });
     session.child.stdin.write(JSON.stringify({ jsonrpc: "2.0", method: "initialized" }) + "\n");
     const sThread = await rpc(session, "thread/start", { cwd: process.cwd() });
     session.codexThreadId = sThread?.thread?.id ?? null;
@@ -197,14 +238,18 @@ async function runNode() {
   // Wait for all survivors to complete (max 60s)
   const end = Date.now() + 60_000;
   while (Date.now() < end) {
-    const survivorsCompleted = survivorSessions.every(({ stats }) => stats.turnsCompleted > 0 || stats.errors.length > 0);
+    const survivorsCompleted = survivorSessions.every(
+      ({ stats }) => stats.turnsCompleted > 0 || stats.errors.length > 0,
+    );
     if (survivorsCompleted) break;
     await sleep(500);
   }
 
   // Kill remaining
   for (const [, session] of sessions) {
-    try { session.child.kill(); } catch {}
+    try {
+      session.child.kill();
+    } catch {}
   }
 
   return { allStats };
@@ -215,6 +260,7 @@ async function runNode() {
 // ---------------------------------------------------------------------------
 
 async function runElixir() {
+  if (!HarnessClientManager) throw new Error("HarnessClientManager not available — import failed");
   const allStats: SessionStats[] = [];
   let victimCrashTime: number | null = null;
 
@@ -259,7 +305,14 @@ async function runElixir() {
     threadId: victimId,
     provider: "mock",
     cwd: process.cwd(),
-    providerOptions: { mock: { deltaCount: DELTA_COUNT, deltaSizeKb: DELTA_SIZE_KB, delayMs: DELAY_MS, mode: "crash" } },
+    providerOptions: {
+      mock: {
+        deltaCount: DELTA_COUNT,
+        deltaSizeKb: DELTA_SIZE_KB,
+        delayMs: DELAY_MS,
+        mode: "crash",
+      },
+    },
   });
 
   // Start survivor sessions (normal mode)
@@ -272,7 +325,14 @@ async function runElixir() {
       threadId: sid,
       provider: "mock",
       cwd: process.cwd(),
-      providerOptions: { mock: { deltaCount: DELTA_COUNT, deltaSizeKb: DELTA_SIZE_KB, delayMs: DELAY_MS, mode: "normal" } },
+      providerOptions: {
+        mock: {
+          deltaCount: DELTA_COUNT,
+          deltaSizeKb: DELTA_SIZE_KB,
+          delayMs: DELAY_MS,
+          mode: "normal",
+        },
+      },
     });
   }
 
@@ -287,12 +347,17 @@ async function runElixir() {
     log(`Warning: Could not fetch pre-crash metrics: ${e}`);
   }
   const preSessions = (preMetrics.sessions ?? []).length;
-  log(`Pre-crash: ${preSessions} sessions active, ${preMetrics.beam?.process_count ?? 0} BEAM processes`);
+  log(
+    `Pre-crash: ${preSessions} sessions active, ${preMetrics.beam?.process_count ?? 0} BEAM processes`,
+  );
 
   // Send turns to ALL
   log("Sending turns to all sessions (victim will crash mid-stream)...");
   for (const stats of allStats) {
-    mgr.sendTurn(stats.id, { input: [{ type: "text", text: stats.role === "victim" ? "crash test" : "survivor test" }] })
+    mgr
+      .sendTurn(stats.id, {
+        input: [{ type: "text", text: stats.role === "victim" ? "crash test" : "survivor test" }],
+      })
       .catch((e: any) => stats.errors.push(e instanceof Error ? e.message : String(e)));
   }
 
@@ -317,7 +382,9 @@ async function runElixir() {
   const postSessions = (postMetrics.sessions ?? []).length;
   log(`Post-crash: ${postSessions} sessions active (victim should be gone)`);
 
-  try { await mgr.stopAll(); } catch {}
+  try {
+    await mgr.stopAll();
+  } catch {}
   mgr.disconnect();
 
   return { allStats, preSessionCount: preSessions, postSessionCount: postSessions };
@@ -355,15 +422,22 @@ async function main() {
   for (const s of survivors) {
     const ok = s.turnsCompleted > 0 && s.errors.length === 0;
     if (!ok) allSurvived = false;
-    console.log(`    [${s.id.slice(0, 30)}] turns=${s.turnsCompleted} deltas=${s.deltaCount} continuedAfterCrash=${s.continuedAfterCrash} ${ok ? "OK" : "FAILED"}`);
+    console.log(
+      `    [${s.id.slice(0, 30)}] turns=${s.turnsCompleted} deltas=${s.deltaCount} continuedAfterCrash=${s.continuedAfterCrash} ${ok ? "OK" : "FAILED"}`,
+    );
   }
 
-  const isolationVerified = victim.crashDetected && allSurvived;
-  console.log(`\n  CRASH ISOLATION: ${isolationVerified ? "VERIFIED — crash did NOT cascade" : "FAILED"}`);
+  const someSurvivorContinuedAfterCrash = survivors.some((s) => s.continuedAfterCrash);
+  const isolationVerified = victim.crashDetected && allSurvived && someSurvivorContinuedAfterCrash;
+  console.log(
+    `\n  CRASH ISOLATION: ${isolationVerified ? "VERIFIED — crash did NOT cascade" : "FAILED"}`,
+  );
 
   if (RUNTIME === "elixir" && "preSessionCount" in result) {
     const r = result as any;
-    console.log(`  Sessions: ${r.preSessionCount} → ${r.postSessionCount} (victim removed by DynamicSupervisor)`);
+    console.log(
+      `  Sessions: ${r.preSessionCount} → ${r.postSessionCount} (victim removed by DynamicSupervisor)`,
+    );
   }
 
   const output = {
@@ -372,7 +446,12 @@ async function main() {
     startedAt,
     completedAt,
     duration_ms: completedAt - startedAt,
-    config: { survivorCount: SURVIVOR_COUNT, deltaCount: DELTA_COUNT, deltaSizeKb: DELTA_SIZE_KB, delayMs: DELAY_MS },
+    config: {
+      survivorCount: SURVIVOR_COUNT,
+      deltaCount: DELTA_COUNT,
+      deltaSizeKb: DELTA_SIZE_KB,
+      delayMs: DELAY_MS,
+    },
     victim: {
       id: victim.id,
       crashDetected: victim.crashDetected,

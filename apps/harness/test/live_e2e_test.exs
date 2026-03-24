@@ -33,7 +33,7 @@ defmodule Harness.LiveE2ETest do
         event
       {:harness_event, event} ->
         IO.puts("    Event (other): #{inspect(event, limit: 50)}")
-        wait_for_event(thread_id, timeout - 100)
+        wait_for_event(thread_id, max(timeout - 100, 0))
     after
       timeout ->
         IO.puts("    (no more events after #{timeout}ms)")

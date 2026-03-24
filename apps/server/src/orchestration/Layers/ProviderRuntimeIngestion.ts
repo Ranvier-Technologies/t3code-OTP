@@ -877,21 +877,30 @@ const make = Effect.gen(function* () {
           if (!thread) {
             yield* Effect.logWarning(
               `Thread '${event.threadId}' not found for ${event.type} event from provider '${event.provider}'. ` +
-              `Creating minimal thread to prevent event loss.`,
+                `Creating minimal thread to prevent event loss.`,
             );
             yield* orchestrationEngine.dispatch({
               type: "thread.create",
-              commandId: CommandId.makeUnsafe(`auto-create-${event.threadId}:${crypto.randomUUID()}`),
+              commandId: CommandId.makeUnsafe(
+                `auto-create-${event.threadId}:${crypto.randomUUID()}`,
+              ),
               threadId: event.threadId,
               provider: event.provider,
               model: (event.payload as Record<string, unknown>)?.model as string | undefined,
               createdAt: event.createdAt,
             });
+            // Allow projection pipeline to process the thread.create event
+            yield* Effect.sleep("50 millis");
             const postCreateReadModel = yield* orchestrationEngine.getReadModel();
             thread = postCreateReadModel.threads.find((entry) => entry.id === event.threadId);
           }
         }
-        if (!thread) return;
+        if (!thread) {
+          yield* Effect.logWarning(
+            `Dropping event '${event.type}' for thread '${event.threadId}' — thread still missing after auto-create attempt.`,
+          );
+          return;
+        }
       }
 
       const now = event.createdAt;

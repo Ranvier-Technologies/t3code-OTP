@@ -21,7 +21,9 @@ let HarnessClientManager: any;
 try {
   const mod = await import("../apps/server/src/provider/Layers/HarnessClientManager.ts");
   HarnessClientManager = mod.HarnessClientManager;
-} catch {}
+} catch (err) {
+  console.warn("Failed to import HarnessClientManager:", err);
+}
 
 // ---------------------------------------------------------------------------
 // Config
@@ -116,14 +118,19 @@ function trackEvent(stats: SessionStats, method: string, payload: unknown) {
   if (!stats.firstEventAt) stats.firstEventAt = now;
   stats.lastEventAt = now;
 
-  try { stats.totalPayloadBytes += JSON.stringify(payload).length; } catch {}
+  try {
+    stats.totalPayloadBytes += JSON.stringify(payload).length;
+  } catch {}
 
   // Count event types
   stats.eventTypes[method] = (stats.eventTypes[method] || 0) + 1;
 
   // Classify
-  if (method === "content/delta" || method === "content_block_delta" ||
-      method === "item/agentMessage/delta") {
+  if (
+    method === "content/delta" ||
+    method === "content_block_delta" ||
+    method === "item/agentMessage/delta"
+  ) {
     stats.contentDeltas++;
   } else if (method === "item/started" || method === "content_block_start") {
     const p = payload as Record<string, unknown>;
@@ -163,23 +170,34 @@ async function runNode() {
 
   const children: ChildProcessWithoutNullStreams[] = [];
 
-  for (let i = 0; i < Math.min(N, CLAUDE_PROMPTS.length); i++) {
-    const workload = CLAUDE_PROMPTS[i]!;
-    const tid = `claude-node-${workload.name}-${Date.now()}`;
-    const workDir = `/tmp/t3code-claude-${workload.name}-${Date.now()}`;
+  for (let i = 0; i < N; i++) {
+    const workload = CLAUDE_PROMPTS[i % CLAUDE_PROMPTS.length]!;
+    const tid = `claude-node-${workload.name}-${i}-${Date.now()}`;
+    const workDir = `/tmp/t3code-claude-${workload.name}-${i}-${Date.now()}`;
     mkdirSync(workDir, { recursive: true });
 
     const stats = createStats(workload.name, tid);
     allStats.push(stats);
 
-    // Spawn claude --print with stream-json output
-    const child = spawn("/bin/sh", ["-c",
-      `claude --print --output-format stream-json --permission-mode bypassPermissions --model claude-sonnet-4-6 '${workload.prompt.replace(/'/g, "'\\''")}'  < /dev/null`
-    ], {
-      cwd: workDir,
-      env: process.env,
-      stdio: ["pipe", "pipe", "pipe"],
-    });
+    // Spawn claude --print with stream-json output (array form avoids shell injection)
+    const child = spawn(
+      "claude",
+      [
+        "--print",
+        "--output-format",
+        "stream-json",
+        "--permission-mode",
+        "bypassPermissions",
+        "--model",
+        "claude-sonnet-4-6",
+        workload.prompt,
+      ],
+      {
+        cwd: workDir,
+        env: process.env,
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
     children.push(child);
 
     // Parse stream-json output line by line
@@ -202,7 +220,7 @@ async function runNode() {
     child.stderr?.resume();
     child.on("exit", (code) => {
       if (code !== 0) stats.errors.push(`Exit code ${code}`);
-      if (stats.turnsCompleted === 0) stats.turnsCompleted = 1; // claude --print = 1 turn
+      if (code === 0 && stats.turnsCompleted === 0) stats.turnsCompleted = 1; // claude --print = 1 turn
     });
 
     log(`[${workload.name}] spawned (cwd: ${workDir})`);
@@ -216,11 +234,18 @@ async function runNode() {
     await sleep(METRICS_INTERVAL_MS);
     const mem = process.memoryUsage();
     const totalEvents = allStats.reduce((s, st) => s + st.totalEvents, 0);
-    timeSeries.push({ elapsed_ms: Date.now() - t0, heapUsed: mem.heapUsed, rss: mem.rss, totalEvents });
+    timeSeries.push({
+      elapsed_ms: Date.now() - t0,
+      heapUsed: mem.heapUsed,
+      rss: mem.rss,
+      totalEvents,
+    });
 
     const completed = allStats.filter((s) => s.turnsCompleted > 0).length;
     const tools = allStats.reduce((s, st) => s + st.toolCalls, 0);
-    process.stdout.write(`\r  ${ts()} events=${totalEvents} tools=${tools} completed=${completed}/${allStats.length} heap=${(mem.heapUsed / 1024 / 1024).toFixed(1)}MB`);
+    process.stdout.write(
+      `\r  ${ts()} events=${totalEvents} tools=${tools} completed=${completed}/${allStats.length} heap=${(mem.heapUsed / 1024 / 1024).toFixed(1)}MB`,
+    );
 
     if (allStats.every((s) => s.turnsCompleted > 0 || s.errors.length > 0)) {
       log("\nAll sessions completed");
@@ -230,7 +255,11 @@ async function runNode() {
 
   clearInterval(lagTimer);
   console.log("");
-  for (const child of children) { try { child.kill(); } catch {} }
+  for (const child of children) {
+    try {
+      child.kill();
+    } catch {}
+  }
 
   return { allStats, timeSeries, lags };
 }
@@ -240,6 +269,7 @@ async function runNode() {
 // ---------------------------------------------------------------------------
 
 async function runElixir() {
+  if (!HarnessClientManager) throw new Error("HarnessClientManager not available — import failed");
   const allStats: SessionStats[] = [];
   const timeSeries: Array<{
     elapsed_ms: number;
@@ -265,10 +295,10 @@ async function runElixir() {
 
   const METRICS_URL = `http://127.0.0.1:${HARNESS_PORT}/api/metrics`;
 
-  for (let i = 0; i < Math.min(N, CLAUDE_PROMPTS.length); i++) {
-    const workload = CLAUDE_PROMPTS[i]!;
-    const tid = `claude-elixir-${workload.name}-${Date.now()}`;
-    const workDir = `/tmp/t3code-claude-${workload.name}-${Date.now()}`;
+  for (let i = 0; i < N; i++) {
+    const workload = CLAUDE_PROMPTS[i % CLAUDE_PROMPTS.length]!;
+    const tid = `claude-elixir-${workload.name}-${i}-${Date.now()}`;
+    const workDir = `/tmp/t3code-claude-${workload.name}-${i}-${Date.now()}`;
     mkdirSync(workDir, { recursive: true });
 
     const stats = createStats(workload.name, tid);
@@ -295,16 +325,18 @@ async function runElixir() {
     const stats = allStats[i]!;
     if (stats.errors.length > 0) continue;
 
-    mgr.sendTurn(stats.threadId, {
-      input: [{ type: "text", text: CLAUDE_PROMPTS[i]!.prompt }],
-    }).catch((e: any) => stats.errors.push(e instanceof Error ? e.message : String(e)));
+    mgr
+      .sendTurn(stats.threadId, {
+        input: [{ type: "text", text: CLAUDE_PROMPTS[i]!.prompt }],
+      })
+      .catch((e: any) => stats.errors.push(e instanceof Error ? e.message : String(e)));
   }
 
   const testEnd = Date.now() + TEST_DURATION_MS;
   while (Date.now() < testEnd) {
     await sleep(METRICS_INTERVAL_MS);
     try {
-      const m = await fetch(METRICS_URL).then((r) => r.json()) as any;
+      const m = (await fetch(METRICS_URL).then((r) => r.json())) as any;
       const totalEvents = allStats.reduce((s, st) => s + st.totalEvents, 0);
       timeSeries.push({
         elapsed_ms: Date.now() - t0,
@@ -315,7 +347,9 @@ async function runElixir() {
 
       const completed = allStats.filter((s) => s.turnsCompleted > 0).length;
       const tools = allStats.reduce((s, st) => s + st.toolCalls, 0);
-      process.stdout.write(`\r  ${ts()} events=${totalEvents} tools=${tools} completed=${completed}/${allStats.length} mem=${(m.beam.total_memory / 1024 / 1024).toFixed(1)}MB`);
+      process.stdout.write(
+        `\r  ${ts()} events=${totalEvents} tools=${tools} completed=${completed}/${allStats.length} mem=${(m.beam.total_memory / 1024 / 1024).toFixed(1)}MB`,
+      );
     } catch {}
 
     if (allStats.every((s) => s.turnsCompleted > 0 || s.errors.length > 0)) {
@@ -325,7 +359,9 @@ async function runElixir() {
   }
 
   console.log("");
-  try { await mgr.stopAll(); } catch {}
+  try {
+    await mgr.stopAll();
+  } catch {}
   mgr.disconnect();
 
   return { allStats, timeSeries, lags: [] as number[] };
@@ -336,7 +372,7 @@ async function runElixir() {
 // ---------------------------------------------------------------------------
 
 async function main() {
-  const sessionCount = Math.min(N, CLAUDE_PROMPTS.length);
+  const sessionCount = N;
   console.log("\n" + "╔" + "═".repeat(58) + "╗");
   console.log("║" + `  REAL Claude Code Stress Test — ${RUNTIME}`.padEnd(58) + "║");
   console.log("║" + `  ${sessionCount} sessions with full tool access`.padEnd(58) + "║");
@@ -354,18 +390,24 @@ async function main() {
   console.log("═".repeat(70));
 
   for (const stats of allStats) {
-    const duration = stats.lastEventAt && stats.firstEventAt
-      ? ((stats.lastEventAt - stats.firstEventAt) / 1000).toFixed(0) : "?";
+    const duration =
+      stats.lastEventAt && stats.firstEventAt
+        ? ((stats.lastEventAt - stats.firstEventAt) / 1000).toFixed(0)
+        : "?";
     console.log(`\n  [${stats.name}]`);
     console.log(`    Events: ${stats.totalEvents} (${stats.contentDeltas} content deltas)`);
-    console.log(`    Tool calls: ${stats.toolCalls} (${stats.fileChanges} files, ${stats.commandExecs} commands)`);
+    console.log(
+      `    Tool calls: ${stats.toolCalls} (${stats.fileChanges} files, ${stats.commandExecs} commands)`,
+    );
     console.log(`    Turns: ${stats.turnsCompleted}`);
     console.log(`    Payload: ${(stats.totalPayloadBytes / 1024).toFixed(0)}KB`);
     console.log(`    Duration: ${duration}s`);
     if (stats.errors.length > 0) console.log(`    ERRORS: ${stats.errors.join(", ")}`);
 
     // Top event types
-    const sorted = Object.entries(stats.eventTypes).sort((a, b) => b[1] - a[1]).slice(0, 8);
+    const sorted = Object.entries(stats.eventTypes)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 8);
     console.log(`    Top events: ${sorted.map(([k, v]) => `${k}(${v})`).join(", ")}`);
   }
 
@@ -375,7 +417,9 @@ async function main() {
   const duration = (completedAt - startedAt) / 1000;
 
   console.log(`\n  Summary:`);
-  console.log(`    Sessions: ${allStats.filter(s => s.turnsCompleted > 0).length}/${allStats.length} completed`);
+  console.log(
+    `    Sessions: ${allStats.filter((s) => s.turnsCompleted > 0).length}/${allStats.length} completed`,
+  );
   console.log(`    Total events: ${totalEvents}`);
   console.log(`    Total tool calls: ${totalTools}`);
   console.log(`    Total payload: ${(totalPayload / 1024).toFixed(0)}KB`);
@@ -383,7 +427,9 @@ async function main() {
 
   if (RUNTIME === "node" && lags.length > 0) {
     const sorted = [...lags].sort((a, b) => a - b);
-    console.log(`    Event loop lag: p50=${sorted[Math.floor(sorted.length * 0.5)]?.toFixed(1)}ms p99=${sorted[Math.floor(sorted.length * 0.99)]?.toFixed(1)}ms`);
+    console.log(
+      `    Event loop lag: p50=${sorted[Math.floor(sorted.length * 0.5)]?.toFixed(1)}ms p99=${sorted[Math.floor(sorted.length * 0.99)]?.toFixed(1)}ms`,
+    );
   }
 
   const output = {
@@ -397,7 +443,7 @@ async function main() {
     timeSeries,
     summary: {
       sessionCount: allStats.length,
-      completed: allStats.filter(s => s.turnsCompleted > 0).length,
+      completed: allStats.filter((s) => s.turnsCompleted > 0).length,
       totalEvents,
       totalToolCalls: totalTools,
       totalPayloadKb: Math.round(totalPayload / 1024),

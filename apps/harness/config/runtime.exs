@@ -12,6 +12,11 @@ config :harness, HarnessWeb.Endpoint,
   server: true
 
 if config_env() == :prod do
+  trimmed_secret = String.trim(harness_secret || "")
+  if trimmed_secret == "" or trimmed_secret == "dev-harness-secret" do
+    raise "T3CODE_HARNESS_SECRET must be set to a non-default, non-empty value in production"
+  end
+
   secret_key_base =
     System.get_env("SECRET_KEY_BASE") ||
       raise "environment variable SECRET_KEY_BASE is missing"

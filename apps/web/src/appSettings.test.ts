@@ -164,6 +164,8 @@ describe("provider-indexed custom model settings", () => {
     expect(getCustomModelsByProvider(settings)).toEqual({
       codex: ["custom/codex-model"],
       claudeAgent: ["claude/custom-opus"],
+      cursor: [],
+      opencode: [],
     });
   });
 

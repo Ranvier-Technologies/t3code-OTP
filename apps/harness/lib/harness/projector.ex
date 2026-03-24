@@ -67,7 +67,7 @@ defmodule Harness.Projector do
 
   defp apply_event(snapshot, %Event{kind: :session, method: "session/error"} = event) do
     update_session(snapshot, event.thread_id, fn session ->
-      %{session | status: :error, updated_at: event.created_at}
+      %{session | status: :error, active_turn: nil, updated_at: event.created_at}
     end)
   end
 

@@ -39,6 +39,7 @@ Browser ──── Node Server ──────────── T3Otp-Engi
 ```
 
 **The engine owns:**
+
 - Provider process spawning and supervision (one GenServer per session)
 - Crash isolation (one session dies, siblings continue unaffected)
 - Per-session memory containment (independent BEAM process heaps)
@@ -47,6 +48,7 @@ Browser ──── Node Server ──────────── T3Otp-Engi
 - Dynamic model discovery from provider CLIs
 
 **The host owns:**
+
 - Canonical event mapping to domain types (TypeScript)
 - SQLite persistence
 - Browser/Electron WebSocket
@@ -134,28 +136,28 @@ pixi run format-check   # Formatting check
 
 All 4 providers verified end-to-end in browser with real prompts and real tool execution:
 
-| Provider | Transport | Events | Tool Use | Verified |
-|----------|-----------|--------|----------|----------|
-| Codex | stdio JSON-RPC | 47 events, full turn cycle | `commandExecution` — file created | Y |
-| Claude | stdio stream-json | 21 events | file write via `bypassPermissions` | Y |
-| Cursor | stdio stream-json | 24 events, thinking + response | file write via `--yolo` | Y |
-| OpenCode | HTTP + SSE | 19 events, SSE streaming | `file_change write` via permission reply | Y |
+| Provider | Transport         | Events                         | Tool Use                                 | Verified |
+| -------- | ----------------- | ------------------------------ | ---------------------------------------- | -------- |
+| Codex    | stdio JSON-RPC    | 47 events, full turn cycle     | `commandExecution` — file created        | Y        |
+| Claude   | stdio stream-json | 21 events                      | file write via `bypassPermissions`       | Y        |
+| Cursor   | stdio stream-json | 24 events, thinking + response | file write via `--yolo`                  | Y        |
+| OpenCode | HTTP + SSE        | 19 events, SSE streaming       | `file_change write` via permission reply | Y        |
 
 ### Feature matrix
 
-| Feature | Codex | Claude | Cursor | OpenCode |
-|---------|:-----:|:------:|:------:|:--------:|
-| Session lifecycle | Y | Y | Y | Y |
-| Send/interrupt turn | Y | Y | Y | Y |
-| Approval requests | Y | Y | Y | Y |
-| User input questions | Y | Y | -- | Y |
-| Thread read/rollback | Y | Y | read only | Y |
-| Tool visibility in chat | Y | Y | Y | Y |
-| Streaming tool output | Y | Y | --* | --* |
-| Dynamic model discovery | -- | -- | Y (80+) | Y (17) |
-| Thread persistence | Y | Y | Y | Y |
+| Feature                 | Codex | Claude |  Cursor   | OpenCode |
+| ----------------------- | :---: | :----: | :-------: | :------: |
+| Session lifecycle       |   Y   |   Y    |     Y     |    Y     |
+| Send/interrupt turn     |   Y   |   Y    |     Y     |    Y     |
+| Approval requests       |   Y   |   Y    |     Y     |    Y     |
+| User input questions    |   Y   |   Y    |    --     |    Y     |
+| Thread read/rollback    |   Y   |   Y    | read only |    Y     |
+| Tool visibility in chat |   Y   |   Y    |     Y     |    Y     |
+| Streaming tool output   |   Y   |   Y    |   --\*    |   --\*   |
+| Dynamic model discovery |  --   |   --   |  Y (80+)  |  Y (17)  |
+| Thread persistence      |   Y   |   Y    |     Y     |    Y     |
 
-*Cursor and OpenCode protocols only emit tool start/complete events, no intermediate output. This is an upstream limitation. See [KI-3](output/known-issues.md).*
+_Cursor and OpenCode protocols only emit tool start/complete events, no intermediate output. This is an upstream limitation. See [KI-3](output/known-issues.md)._
 
 ---
 
@@ -199,38 +201,38 @@ Full analysis with methodology notes, caveats, and adversarial review: [`output/
 
 ### Elixir harness (`apps/harness/`)
 
-| Module | LOC | Purpose |
-|--------|-----|---------|
-| `SessionManager` | 224 | DynamicSupervisor routing, session lifecycle |
-| `CodexSession` | 380 | Codex JSON-RPC GenServer |
-| `ClaudeSession` | 530 | Claude CLI stream-json GenServer |
-| `CursorSession` | 712 | Cursor stream-json GenServer + tool mapping |
-| `OpenCodeSession` | 1,050 | OpenCode HTTP+SSE GenServer + tool mapping |
-| `MockSession` | 220 | Configurable mock for stress testing |
-| `SnapshotServer` | 380 | In-memory event store + WAL replay |
-| `ModelDiscovery` | 149 | CLI-based model listing with ETS cache |
-| `HarnessChannel` | 246 | Phoenix Channel — single WebSocket entry point |
+| Module            | LOC   | Purpose                                        |
+| ----------------- | ----- | ---------------------------------------------- |
+| `SessionManager`  | 224   | DynamicSupervisor routing, session lifecycle   |
+| `CodexSession`    | 380   | Codex JSON-RPC GenServer                       |
+| `ClaudeSession`   | 530   | Claude CLI stream-json GenServer               |
+| `CursorSession`   | 712   | Cursor stream-json GenServer + tool mapping    |
+| `OpenCodeSession` | 1,050 | OpenCode HTTP+SSE GenServer + tool mapping     |
+| `MockSession`     | 220   | Configurable mock for stress testing           |
+| `SnapshotServer`  | 380   | In-memory event store + WAL replay             |
+| `ModelDiscovery`  | 149   | CLI-based model listing with ETS cache         |
+| `HarnessChannel`  | 246   | Phoenix Channel — single WebSocket entry point |
 
 ### Node integration
 
-| File | LOC | Purpose |
-|------|-----|---------|
+| File                      | LOC   | Purpose                                                           |
+| ------------------------- | ----- | ----------------------------------------------------------------- |
 | `HarnessClientAdapter.ts` | 1,083 | Single adapter implementing all 13 `ProviderAdapterShape` methods |
-| `HarnessClientManager.ts` | 586 | Phoenix Channel WebSocket client with reconnection |
-| `codexEventMapping.ts` | 1,244 | Extracted event mapping (shared with existing CodexAdapter) |
+| `HarnessClientManager.ts` | 586   | Phoenix Channel WebSocket client with reconnection                |
+| `codexEventMapping.ts`    | 1,244 | Extracted event mapping (shared with existing CodexAdapter)       |
 
 ### The boundary
 
-| Concern | Owner |
-|---------|-------|
-| Provider process lifecycle | Elixir |
-| Crash isolation + supervision | Elixir |
-| Per-session memory containment | Elixir |
-| Event normalization | Elixir |
-| Canonical event mapping (TS types) | Node |
-| SQLite persistence | Node |
-| Browser/Electron WebSocket | Node |
-| Desktop + product integration | Node |
+| Concern                            | Owner  |
+| ---------------------------------- | ------ |
+| Provider process lifecycle         | Elixir |
+| Crash isolation + supervision      | Elixir |
+| Per-session memory containment     | Elixir |
+| Event normalization                | Elixir |
+| Canonical event mapping (TS types) | Node   |
+| SQLite persistence                 | Node   |
+| Browser/Electron WebSocket         | Node   |
+| Desktop + product integration      | Node   |
 
 ---
 
@@ -275,5 +277,3 @@ Same as upstream T3Code. See [LICENSE](LICENSE).
 
 **Bastian Venegas Arevalo** ([@ranvier2d2](https://github.com/ranvier2d2))
 CTO, [Ranvier Technologies](https://ranvier-technologies.com)
-
-

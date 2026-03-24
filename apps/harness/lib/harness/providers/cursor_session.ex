@@ -28,7 +28,8 @@ defmodule Harness.Providers.CursorSession do
     pending_approvals: %{},
     turns: [],
     stopped: false,
-    reasoning_item_id: nil
+    reasoning_item_id: nil,
+    has_real_chat_id: false
   ]
 
   # --- Public API ---
@@ -89,7 +90,8 @@ defmodule Harness.Providers.CursorSession do
       buffer: "",
       binary_path: binary_path,
       session_id: cursor_chat_id || generate_id(),
-      resume_session_id: resume_session_id
+      resume_session_id: resume_session_id,
+      has_real_chat_id: cursor_chat_id != nil
     }
 
     # Don't spawn cursor yet — spawn on first send_turn with the actual prompt.
@@ -107,7 +109,8 @@ defmodule Harness.Providers.CursorSession do
   # Port data received (stdout from cursor process)
   @impl true
   def handle_info({port, {:data, {:eol, line}}}, %{port: port} = state) do
-    state = process_line(to_string(line), state)
+    full_line = state.buffer <> to_string(line)
+    state = process_line(full_line, %{state | buffer: ""})
     {:noreply, state}
   end
 
@@ -189,21 +192,28 @@ defmodule Harness.Providers.CursorSession do
 
     # Spawn cursor agent with --print and the prompt as argument
     model = Map.get(params, "model", Map.get(state.params, "model"))
-    state = case spawn_cursor_with_prompt(state, model, text) do
+    case spawn_cursor_with_prompt(state, model, text) do
       {:ok, port} ->
-        %{state | port: port}
+        state = %{state | port: port}
+        resume_cursor = build_resume_cursor(state)
+
+        {:reply, {:ok, %{
+          threadId: state.thread_id,
+          turnId: turn_id,
+          resumeCursor: resume_cursor
+        }}, state}
+
       {:error, reason} ->
         Logger.error("Failed to spawn cursor agent: #{inspect(reason)}")
-        state
+        state = maybe_complete_turn(state, "failed")
+
+        emit_event(state, :error, "runtime/error", %{
+          "message" => "Failed to spawn cursor agent: #{inspect(reason)}",
+          "class" => "spawn_error"
+        })
+
+        {:reply, {:error, %{reason: inspect(reason)}}, state}
     end
-
-    resume_cursor = build_resume_cursor(state)
-
-    {:reply, {:ok, %{
-      threadId: state.thread_id,
-      turnId: turn_id,
-      resumeCursor: resume_cursor
-    }}, state}
   end
 
   # --- Interrupt ---
@@ -272,7 +282,13 @@ defmodule Harness.Providers.CursorSession do
 
   @impl true
   def handle_call(:read_thread, _from, state) do
-    {:reply, {:ok, %{threadId: state.thread_id, turns: []}}, state}
+    thread = %{
+      threadId: state.thread_id,
+      turns: Enum.map(state.turns, fn t ->
+        %{id: t.turn_id, items: Map.get(t, :items, [])}
+      end)
+    }
+    {:reply, {:ok, thread}, state}
   end
 
   @impl true
@@ -403,11 +419,10 @@ defmodule Harness.Providers.CursorSession do
       cwd -> args ++ ["--workspace", cwd]
     end
 
-    # Resume: always use --resume with the Cursor chatId for thread continuity.
-    # session_id is a real Cursor chatId from create-chat or recovered from resumeCursor.
-    # resume_session_id is set after the first turn from system/init's session_id.
-    chat_id = state.resume_session_id || state.session_id
-    args = if chat_id do
+    # Resume: only use --resume with a real Cursor chatId (from create-chat,
+    # system/init, or resumeCursor). Never pass a synthetic generate_id() value.
+    chat_id = state.resume_session_id || (state.has_real_chat_id && state.session_id)
+    args = if is_binary(chat_id) do
       args ++ ["--resume", chat_id]
     else
       args

@@ -14,7 +14,10 @@
  *   - Elixir harness running on port 4321 with mock provider
  */
 
-import { HarnessClientManager, type HarnessRawEvent } from "../apps/server/src/provider/Layers/HarnessClientManager.ts";
+import {
+  HarnessClientManager,
+  type HarnessRawEvent,
+} from "../apps/server/src/provider/Layers/HarnessClientManager.ts";
 import { writeFileSync, mkdirSync } from "node:fs";
 
 const PORT = Number(process.env.T3CODE_HARNESS_PORT ?? 4321);
@@ -45,7 +48,10 @@ async function fetchMetrics(): Promise<Record<string, unknown>> {
   return (await res.json()) as Record<string, unknown>;
 }
 
-function findSession(metrics: Record<string, unknown>, threadIdPart: string): Record<string, unknown> | null {
+function findSession(
+  metrics: Record<string, unknown>,
+  threadIdPart: string,
+): Record<string, unknown> | null {
   const sessions = (metrics.sessions as Array<Record<string, unknown>>) ?? [];
   return sessions.find((s) => String(s.thread_id ?? "").includes(threadIdPart)) ?? null;
 }
@@ -66,7 +72,10 @@ async function main() {
   const tidA = `gclab-elixir-heavy-${Date.now()}`;
   const tidB = `gclab-elixir-light-${Date.now()}`;
 
-  const turnTimings = new Map<string, { sentAt: number; resolver: ((lat: number) => void) | null }>();
+  const turnTimings = new Map<
+    string,
+    { sentAt: number; resolver: ((lat: number) => void) | null }
+  >();
 
   const mgr = new HarnessClientManager({
     harnessPort: PORT,
@@ -124,11 +133,14 @@ async function main() {
   const bSessionBaseline = findSession(afterBaseline, tidB.slice(0, 20));
   log(`B baseline done: ${stateB.deltas} deltas`);
   if (bSessionBaseline) {
-    log(`  B process: mem=${bSessionBaseline.memory}, gc_count=${bSessionBaseline.gc_count}, reductions=${bSessionBaseline.reductions}`);
+    log(
+      `  B process: mem=${bSessionBaseline.memory}, gc_count=${bSessionBaseline.gc_count}, reductions=${bSessionBaseline.reductions}`,
+    );
   }
 
   const baselineGcRuns = (baselineBeam.gc_runs as number) ?? 0;
-  const afterBaselineGcRuns = ((afterBaseline.beam as Record<string, unknown>).gc_runs as number) ?? 0;
+  const afterBaselineGcRuns =
+    ((afterBaseline.beam as Record<string, unknown>).gc_runs as number) ?? 0;
   const baselineGcDelta = afterBaselineGcRuns - baselineGcRuns;
   log(`  BEAM GC runs during baseline: ${baselineGcDelta}`);
 
@@ -143,7 +155,8 @@ async function main() {
   log("A ready");
 
   const prePhase2Metrics = await fetchMetrics();
-  const prePhase2GcRuns = ((prePhase2Metrics.beam as Record<string, unknown>).gc_runs as number) ?? 0;
+  const prePhase2GcRuns =
+    ((prePhase2Metrics.beam as Record<string, unknown>).gc_runs as number) ?? 0;
 
   // Send both concurrently
   const pA = mgr.sendTurn(tidA, { input: [{ type: "text", text: "heavy" }] });
@@ -151,7 +164,14 @@ async function main() {
   await Promise.all([pA, pB]);
 
   // Poll metrics while both run
-  const phase2Snapshots: Array<{ elapsed: number; aMem: number; aGc: number; bMem: number; bGc: number; beamGc: number }> = [];
+  const phase2Snapshots: Array<{
+    elapsed: number;
+    aMem: number;
+    aGc: number;
+    bMem: number;
+    bGc: number;
+    beamGc: number;
+  }> = [];
   while (stateA.turnsCompleted < 1 || stateB.turnsCompleted < 2) {
     await sleep(500);
     try {
@@ -173,17 +193,26 @@ async function main() {
   }
 
   const postPhase2Metrics = await fetchMetrics();
-  const postPhase2GcRuns = ((postPhase2Metrics.beam as Record<string, unknown>).gc_runs as number) ?? 0;
+  const postPhase2GcRuns =
+    ((postPhase2Metrics.beam as Record<string, unknown>).gc_runs as number) ?? 0;
   const aSession = findSession(postPhase2Metrics, tidA.slice(0, 20));
   const bSession = findSession(postPhase2Metrics, tidB.slice(0, 20));
 
   log(`Phase 2 done: A=${stateA.deltas} deltas, B=${stateB.deltas} total deltas`);
   log(`  BEAM GC runs during phase 2: ${postPhase2GcRuns - prePhase2GcRuns}`);
-  if (aSession) log(`  A process: mem=${aSession.memory}, gc_count=${aSession.gc_count}, reductions=${aSession.reductions}`);
-  if (bSession) log(`  B process: mem=${bSession.memory}, gc_count=${bSession.gc_count}, reductions=${bSession.reductions}`);
+  if (aSession)
+    log(
+      `  A process: mem=${aSession.memory}, gc_count=${aSession.gc_count}, reductions=${aSession.reductions}`,
+    );
+  if (bSession)
+    log(
+      `  B process: mem=${bSession.memory}, gc_count=${bSession.gc_count}, reductions=${bSession.reductions}`,
+    );
 
   // Cleanup
-  try { await mgr.stopAll(); } catch {}
+  try {
+    await mgr.stopAll();
+  } catch {}
   await sleep(2000);
   const afterCleanup = await fetchMetrics();
   mgr.disconnect();
@@ -200,23 +229,28 @@ async function main() {
     summary: {
       baselineGcRuns: baselineGcDelta,
       concurrentGcRuns: postPhase2GcRuns - prePhase2GcRuns,
-      sessionA: aSession ? {
-        memory: aSession.memory,
-        gc_count: aSession.gc_count,
-        heap_size: aSession.heap_size,
-        reductions: aSession.reductions,
-        payloadSizeKb: 500,
-      } : null,
-      sessionB: bSession ? {
-        memory: bSession.memory,
-        gc_count: bSession.gc_count,
-        heap_size: bSession.heap_size,
-        reductions: bSession.reductions,
-        payloadSizeKb: 0.1,
-      } : null,
-      gcIsolation: aSession && bSession
-        ? `A's gc_count=${aSession.gc_count} vs B's gc_count=${bSession.gc_count} — each process GCs independently`
-        : "Could not measure per-process GC",
+      sessionA: aSession
+        ? {
+            memory: aSession.memory,
+            gc_count: aSession.gc_count,
+            heap_size: aSession.heap_size,
+            reductions: aSession.reductions,
+            payloadSizeKb: 500,
+          }
+        : null,
+      sessionB: bSession
+        ? {
+            memory: bSession.memory,
+            gc_count: bSession.gc_count,
+            heap_size: bSession.heap_size,
+            reductions: bSession.reductions,
+            payloadSizeKb: 0.1,
+          }
+        : null,
+      gcIsolation:
+        aSession && bSession
+          ? `A's gc_count=${aSession.gc_count} vs B's gc_count=${bSession.gc_count} — each process GCs independently`
+          : "Could not measure per-process GC",
       beamTotalMemoryBefore: (prePhase2Metrics.beam as Record<string, unknown>).total_memory,
       beamTotalMemoryAfter: (postPhase2Metrics.beam as Record<string, unknown>).total_memory,
       beamTotalMemoryCleanup: (afterCleanup.beam as Record<string, unknown>).total_memory,
