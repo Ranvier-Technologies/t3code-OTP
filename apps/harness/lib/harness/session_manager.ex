@@ -37,54 +37,64 @@ defmodule Harness.SessionManager do
   end
 
   defp start_session_with_module(session_module, thread_id, provider, params) do
-    child_spec = {session_module, %{
-      thread_id: thread_id,
-      provider: provider,
-      params: params,
-      event_callback: &handle_provider_event/1
-    }}
+    child_spec =
+      {session_module,
+       %{
+         thread_id: thread_id,
+         provider: provider,
+         params: params,
+         event_callback: &handle_provider_event/1
+       }}
 
     case DynamicSupervisor.start_child(Harness.SessionSupervisor, child_spec) do
       {:ok, pid} ->
         # Emit connecting only for genuinely new sessions
-        SnapshotServer.apply_event(Event.new(%{
-          thread_id: thread_id,
-          provider: provider,
-          kind: :session,
-          method: "session/connecting",
-          payload: params
-        }))
+        SnapshotServer.apply_event(
+          Event.new(%{
+            thread_id: thread_id,
+            provider: provider,
+            kind: :session,
+            method: "session/connecting",
+            payload: params
+          })
+        )
+
         # Block until the GenServer reaches ready state (or timeout after 60s).
         # OpenCode's server takes ~20s to start; 30s was too tight.
         try do
           case session_module.wait_for_ready(pid, 60_000) do
             :ok ->
-              {:ok, %{
-                threadId: thread_id,
-                provider: provider,
-                status: "ready"
-              }}
+              {:ok,
+               %{
+                 threadId: thread_id,
+                 provider: provider,
+                 status: "ready"
+               }}
 
             {:error, reason} ->
-              SnapshotServer.apply_event(Event.new(%{
-                thread_id: thread_id,
-                provider: provider,
-                kind: :session,
-                method: "session/error",
-                payload: %{"error" => "Session failed to become ready: #{inspect(reason)}"}
-              }))
+              SnapshotServer.apply_event(
+                Event.new(%{
+                  thread_id: thread_id,
+                  provider: provider,
+                  kind: :session,
+                  method: "session/error",
+                  payload: %{"error" => "Session failed to become ready: #{inspect(reason)}"}
+                })
+              )
 
               {:error, "Session failed to become ready: #{inspect(reason)}"}
           end
         catch
           :exit, reason ->
-            SnapshotServer.apply_event(Event.new(%{
-              thread_id: thread_id,
-              provider: provider,
-              kind: :session,
-              method: "session/error",
-              payload: %{"error" => "Session process died during init: #{inspect(reason)}"}
-            }))
+            SnapshotServer.apply_event(
+              Event.new(%{
+                thread_id: thread_id,
+                provider: provider,
+                kind: :session,
+                method: "session/error",
+                payload: %{"error" => "Session process died during init: #{inspect(reason)}"}
+              })
+            )
 
             {:error, "Session process died during init: #{inspect(reason)}"}
         end
@@ -99,20 +109,24 @@ defmodule Harness.SessionManager do
           end
 
         Logger.info("Session already running for thread #{thread_id} (#{inspect(pid)}), reusing")
-        {:ok, %{
-          threadId: thread_id,
-          provider: actual_provider,
-          status: "ready"
-        }}
+
+        {:ok,
+         %{
+           threadId: thread_id,
+           provider: actual_provider,
+           status: "ready"
+         }}
 
       {:error, reason} ->
-        SnapshotServer.apply_event(Event.new(%{
-          thread_id: thread_id,
-          provider: provider,
-          kind: :session,
-          method: "session/error",
-          payload: %{"error" => inspect(reason)}
-        }))
+        SnapshotServer.apply_event(
+          Event.new(%{
+            thread_id: thread_id,
+            provider: provider,
+            kind: :session,
+            method: "session/error",
+            payload: %{"error" => inspect(reason)}
+          })
+        )
 
         {:error, "Failed to start session: #{inspect(reason)}"}
     end
@@ -194,6 +208,24 @@ defmodule Harness.SessionManager do
     |> Enum.map(fn {thread_id, provider} ->
       %{threadId: thread_id, provider: provider}
     end)
+  end
+
+  @doc """
+  Get diagnostics from a session's GenServer state.
+  Returns a safe subset of internal state for debugging.
+  """
+  def get_diagnostics(thread_id) do
+    case Registry.lookup(Harness.SessionRegistry, thread_id) do
+      [{pid, _provider}] ->
+        try do
+          GenServer.call(pid, :get_diagnostics, 5_000)
+        catch
+          :exit, reason -> {:error, "GenServer call failed: #{inspect(reason)}"}
+        end
+
+      [] ->
+        {:error, "Session not found: #{thread_id}"}
+    end
   end
 
   @doc """

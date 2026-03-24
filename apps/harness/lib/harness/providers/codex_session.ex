@@ -29,17 +29,28 @@ defmodule Harness.Providers.CodexSession do
   @spark_disabled_plan_types MapSet.new(["free", "go", "plus"])
 
   @recoverable_resume_errors [
-    "not found", "missing thread", "no such thread",
-    "unknown thread", "does not exist"
+    "not found",
+    "missing thread",
+    "no such thread",
+    "unknown thread",
+    "does not exist"
   ]
 
   @suppressed_child_methods MapSet.new([
-    "thread/started", "thread/status/changed", "thread/archived",
-    "thread/unarchived", "thread/closed", "thread/compacted",
-    "thread/name/updated", "thread/tokenUsage/updated",
-    "turn/started", "turn/completed", "turn/aborted",
-    "turn/plan/updated", "item/plan/delta"
-  ])
+                              "thread/started",
+                              "thread/status/changed",
+                              "thread/archived",
+                              "thread/unarchived",
+                              "thread/closed",
+                              "thread/compacted",
+                              "thread/name/updated",
+                              "thread/tokenUsage/updated",
+                              "turn/started",
+                              "turn/completed",
+                              "turn/aborted",
+                              "turn/plan/updated",
+                              "item/plan/delta"
+                            ])
 
   # Plan mode developer instructions (ported from codexAppServerManager.ts)
   @plan_mode_instructions """
@@ -95,7 +106,8 @@ defmodule Harness.Providers.CodexSession do
     thread_id = Map.fetch!(opts, :thread_id)
 
     GenServer.start_link(__MODULE__, opts,
-      name: {:via, Registry, {Harness.SessionRegistry, thread_id, Map.get(opts, :provider, "codex")}}
+      name:
+        {:via, Registry, {Harness.SessionRegistry, thread_id, Map.get(opts, :provider, "codex")}}
     )
   end
 
@@ -171,11 +183,12 @@ defmodule Harness.Providers.CodexSession do
     codex_opts = get_in(state.params, ["providerOptions", "codex"]) || %{}
     experimental_api = Map.get(codex_opts, "experimentalApi", false)
 
-    capabilities = if experimental_api do
-      %{"experimentalApi" => true}
-    else
-      %{}
-    end
+    capabilities =
+      if experimental_api do
+        %{"experimentalApi" => true}
+      else
+        %{}
+      end
 
     initialize_params = %{
       "clientInfo" => %{
@@ -260,10 +273,11 @@ defmodule Harness.Providers.CodexSession do
 
     {method, params} =
       if resume_cursor do
-        {"thread/resume", %{
-          "threadId" => resume_cursor,
-          "overrides" => thread_overrides(state)
-        }}
+        {"thread/resume",
+         %{
+           "threadId" => resume_cursor,
+           "overrides" => thread_overrides(state)
+         }}
       else
         {"thread/start", thread_overrides(state)}
       end
@@ -296,16 +310,42 @@ defmodule Harness.Providers.CodexSession do
   end
 
   @impl true
+  def handle_call(:get_diagnostics, _from, state) do
+    alias Harness.Dev.DiagnosticsHelpers, as: DH
+
+    diagnostics = %{
+      thread_id: state.thread_id,
+      provider: state.provider,
+      ready: state.ready,
+      stopping: state.stopping,
+      codex_thread_id: state.codex_thread_id,
+      binary_path: state.binary_path,
+      codex_home: state.codex_home,
+      account: DH.sanitize_account(state.account),
+      port_alive: DH.port_alive?(state.port),
+      next_request_id: state.next_id,
+      pending_count: map_size(state.pending),
+      pending_methods: DH.pending_methods(state.pending),
+      collab_receiver_count: map_size(state.collab_receiver_turns),
+      buffer_bytes: byte_size(state.buffer || "")
+    }
+
+    {:reply, {:ok, diagnostics}, state}
+  end
+
+  @impl true
   def handle_call({:send_turn, params}, from, state) do
     codex_tid = state.codex_thread_id || state.thread_id
     {id, state} = next_request_id(state)
 
     raw_input = Map.get(params, "input", [])
-    codex_input = cond do
-      is_list(raw_input) -> raw_input
-      is_binary(raw_input) -> [%{"type" => "text", "text" => raw_input}]
-      true -> []
-    end
+
+    codex_input =
+      cond do
+        is_list(raw_input) -> raw_input
+        is_binary(raw_input) -> [%{"type" => "text", "text" => raw_input}]
+        true -> []
+      end
 
     # Resolve model with account gating
     model = Map.get(params, "model")
@@ -319,15 +359,16 @@ defmodule Harness.Providers.CodexSession do
     # Build collaboration mode from interactionMode
     collaboration_mode = build_collaboration_mode(params, resolved_model, effort)
 
-    turn_params = %{
-      "threadId" => codex_tid,
-      "input" => codex_input,
-      "model" => resolved_model,
-      "effort" => effort,
-      "serviceTier" => service_tier,
-      "collaborationMode" => collaboration_mode
-    }
-    |> reject_nil_values()
+    turn_params =
+      %{
+        "threadId" => codex_tid,
+        "input" => codex_input,
+        "model" => resolved_model,
+        "effort" => effort,
+        "serviceTier" => service_tier,
+        "collaborationMode" => collaboration_mode
+      }
+      |> reject_nil_values()
 
     state = send_rpc_request(state, id, "turn/start", turn_params, from)
     {:noreply, state}
@@ -374,14 +415,32 @@ defmodule Harness.Providers.CodexSession do
   @impl true
   def handle_call({:read_thread, thread_id}, from, state) do
     {id, state} = next_request_id(state)
-    state = send_rpc_request(state, id, "thread/read", %{"threadId" => thread_id, "includeTurns" => true}, from)
+
+    state =
+      send_rpc_request(
+        state,
+        id,
+        "thread/read",
+        %{"threadId" => thread_id, "includeTurns" => true},
+        from
+      )
+
     {:noreply, state}
   end
 
   @impl true
   def handle_call({:rollback_thread, thread_id, num_turns}, from, state) do
     {id, state} = next_request_id(state)
-    state = send_rpc_request(state, id, "thread/rollback", %{"threadId" => thread_id, "numTurns" => num_turns}, from)
+
+    state =
+      send_rpc_request(
+        state,
+        id,
+        "thread/rollback",
+        %{"threadId" => thread_id, "numTurns" => num_turns},
+        from
+      )
+
     {:noreply, state}
   end
 
@@ -410,7 +469,10 @@ defmodule Harness.Providers.CodexSession do
 
     try do
       case System.cmd(binary_path, ["--version"],
-             env: env, stderr_to_stdout: true, timeout: @version_check_timeout_ms) do
+             env: env,
+             stderr_to_stdout: true,
+             timeout: @version_check_timeout_ms
+           ) do
         {output, 0} ->
           case parse_codex_version(output) do
             {:ok, version} ->
@@ -421,11 +483,13 @@ defmodule Harness.Providers.CodexSession do
               end
 
             :error ->
-              {:error, "Could not parse Codex CLI version from output: #{String.slice(output, 0, 200)}"}
+              {:error,
+               "Could not parse Codex CLI version from output: #{String.slice(output, 0, 200)}"}
           end
 
         {output, code} ->
-          {:error, "Codex CLI version check failed (exit #{code}): #{String.slice(output, 0, 200)}"}
+          {:error,
+           "Codex CLI version check failed (exit #{code}): #{String.slice(output, 0, 200)}"}
       end
     rescue
       e in ErlangError ->
@@ -446,13 +510,15 @@ defmodule Harness.Providers.CodexSession do
         prerelease = if length(parts) > 1, do: Enum.at(parts, 1), else: nil
 
         segments = String.split(core, ".") |> Enum.map(&String.to_integer/1)
+
         case segments do
           [major, minor] -> {:ok, {major, minor, 0, prerelease}}
           [major, minor, patch] -> {:ok, {major, minor, patch, prerelease}}
           _ -> :error
         end
 
-      _ -> :error
+      _ ->
+        :error
     end
   rescue
     _ -> :error
@@ -460,6 +526,7 @@ defmodule Harness.Providers.CodexSession do
 
   defp version_supported?({major, minor, patch, prerelease}) do
     {min_major, min_minor, min_patch} = @minimum_codex_version
+
     cond do
       major > min_major -> true
       major < min_major -> false
@@ -476,6 +543,7 @@ defmodule Harness.Providers.CodexSession do
   defp format_upgrade_message({major, minor, patch, prerelease}) do
     version_str = "#{major}.#{minor}.#{patch}" <> if(prerelease, do: "-#{prerelease}", else: "")
     {min_major, min_minor, min_patch} = @minimum_codex_version
+
     "Codex CLI v#{version_str} is too old. Upgrade to v#{min_major}.#{min_minor}.#{min_patch} or newer and restart."
   end
 
@@ -507,8 +575,12 @@ defmodule Harness.Providers.CodexSession do
 
       "chatgpt" ->
         plan_type = Map.get(account, "planType", "unknown")
-        %{type: "chatgpt", plan_type: plan_type,
-          spark_enabled: not MapSet.member?(@spark_disabled_plan_types, plan_type)}
+
+        %{
+          type: "chatgpt",
+          plan_type: plan_type,
+          spark_enabled: not MapSet.member?(@spark_disabled_plan_types, plan_type)
+        }
 
       _ ->
         %{type: "unknown", plan_type: nil, spark_enabled: true}
@@ -528,11 +600,14 @@ defmodule Harness.Providers.CodexSession do
 
   defp build_collaboration_mode(params, model, effort) do
     case Map.get(params, "interactionMode") do
-      nil -> nil
+      nil ->
+        nil
+
       mode ->
-        instructions = if mode == "plan",
-          do: @plan_mode_instructions,
-          else: @default_mode_instructions
+        instructions =
+          if mode == "plan",
+            do: @plan_mode_instructions,
+            else: @default_mode_instructions
 
         %{
           "mode" => mode,
@@ -572,7 +647,8 @@ defmodule Harness.Providers.CodexSession do
   end
 
   defp build_codex_env(codex_home) do
-    base = System.get_env()
+    base =
+      System.get_env()
       |> Enum.map(fn {k, v} -> {to_charlist(k), to_charlist(v)} end)
 
     if codex_home do
@@ -662,7 +738,10 @@ defmodule Harness.Providers.CodexSession do
         state = %{state | pending: pending}
 
         if is_recoverable_resume_error?(message) do
-          Logger.info("Thread resume failed (recoverable): #{message}, falling back to thread/start")
+          Logger.info(
+            "Thread resume failed (recoverable): #{message}, falling back to thread/start"
+          )
+
           emit_event(state, :session, "session/threadResumeFallback", %{"error" => message})
 
           {new_id, state} = next_request_id(state)
@@ -678,7 +757,13 @@ defmodule Harness.Providers.CodexSession do
       {%{from: nil, method: "account/read"}, pending} ->
         # Account read failed — proceed with default account (spark enabled)
         Logger.warning("Account read failed: #{inspect(error)}, using defaults")
-        state = %{state | pending: pending, account: %{type: "unknown", plan_type: nil, spark_enabled: true}}
+
+        state = %{
+          state
+          | pending: pending,
+            account: %{type: "unknown", plan_type: nil, spark_enabled: true}
+        }
+
         send(self(), :start_thread)
         state
 
@@ -700,11 +785,14 @@ defmodule Harness.Providers.CodexSession do
 
   defp handle_rpc_request(state, id, method, params) do
     request_id = Map.get(params, "requestId", "rpc-#{id}")
-    is_user_input = method in ["ask_user", "user_input", "elicitation"] or
-      String.contains?(String.downcase(method), "ask_user")
+
+    is_user_input =
+      method in ["ask_user", "user_input", "elicitation"] or
+        String.contains?(String.downcase(method), "ask_user")
 
     if is_user_input do
       questions = Map.get(params, "questions", [Map.get(params, "question", %{})])
+
       emit_event(state, :request, "user-input/requested", %{
         "requestId" => request_id,
         "rpcId" => id,
@@ -714,13 +802,14 @@ defmodule Harness.Providers.CodexSession do
       emit_event(state, :request, method, Map.put(params, "rpcId", id))
     end
 
-    pending = Map.put(state.pending, id, %{
-      kind: :provider_request,
-      method: method,
-      params: Map.put(params, "requestId", request_id),
-      from: nil,
-      timer: nil
-    })
+    pending =
+      Map.put(state.pending, id, %{
+        kind: :provider_request,
+        method: method,
+        params: Map.put(params, "requestId", request_id),
+        from: nil,
+        timer: nil
+      })
 
     %{state | pending: pending}
   end
@@ -788,14 +877,18 @@ defmodule Harness.Providers.CodexSession do
     item_type = Map.get(item, "type") || Map.get(item, "kind", "")
 
     if item_type == "collabAgentToolCall" do
-      receiver_ids = Map.get(item, "receiverThreadIds", [])
+      receiver_ids =
+        Map.get(item, "receiverThreadIds", [])
         |> Enum.filter(&is_binary/1)
+
       parent_turn_id = Map.get(item, "turnId") || Map.get(params, "turnId")
 
       if parent_turn_id && length(receiver_ids) > 0 do
-        new_receivers = Enum.reduce(receiver_ids, state.collab_receiver_turns, fn tid, acc ->
-          Map.put(acc, tid, parent_turn_id)
-        end)
+        new_receivers =
+          Enum.reduce(receiver_ids, state.collab_receiver_turns, fn tid, acc ->
+            Map.put(acc, tid, parent_turn_id)
+          end)
+
         %{state | collab_receiver_turns: new_receivers}
       else
         state
@@ -828,10 +921,11 @@ defmodule Harness.Providers.CodexSession do
   defp thread_overrides(state) do
     runtime_mode = Map.get(state.params, "runtimeMode", "full-access")
 
-    {approval_policy, sandbox} = case runtime_mode do
-      "approval-required" -> {"on-request", "workspace-write"}
-      _ -> {"never", "danger-full-access"}
-    end
+    {approval_policy, sandbox} =
+      case runtime_mode do
+        "approval-required" -> {"on-request", "workspace-write"}
+        _ -> {"never", "danger-full-access"}
+      end
 
     %{
       "model" => Map.get(state.params, "model"),
@@ -857,11 +951,12 @@ defmodule Harness.Providers.CodexSession do
         Process.send_after(self(), {:request_timeout, id}, @request_timeout)
       end
 
-    pending = Map.put(state.pending, id, %{
-      method: method,
-      from: from,
-      timer: timer
-    })
+    pending =
+      Map.put(state.pending, id, %{
+        method: method,
+        from: from,
+        timer: timer
+      })
 
     %{state | pending: pending}
   end
@@ -875,13 +970,14 @@ defmodule Harness.Providers.CodexSession do
   end
 
   defp emit_event(state, kind, method, payload) do
-    event = Event.new(%{
-      thread_id: state.thread_id,
-      provider: state.provider,
-      kind: kind,
-      method: method,
-      payload: payload
-    })
+    event =
+      Event.new(%{
+        thread_id: state.thread_id,
+        provider: state.provider,
+        kind: kind,
+        method: method,
+        payload: payload
+      })
 
     state.event_callback.(event)
   end

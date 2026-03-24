@@ -157,11 +157,16 @@ defmodule Harness.Providers.OpenCodeSession do
             {:noreply, state}
 
           {:error, reason} ->
-            emit_event(state, :session, "session/state-changed", %{"state" => "error", "error" => inspect(reason)})
+            emit_event(state, :session, "session/state-changed", %{
+              "state" => "error",
+              "error" => inspect(reason)
+            })
+
             emit_event(state, :error, "runtime/error", %{
               "message" => "Session creation failed: #{inspect(reason)}",
               "class" => "provider_error"
             })
+
             {:stop, {:session_create_failed, reason}, state}
         end
 
@@ -195,9 +200,10 @@ defmodule Harness.Providers.OpenCodeSession do
     {events, remaining} = parse_sse_events(buffer)
     state = %{state | sse_buffer: remaining}
 
-    state = Enum.reduce(events, state, fn event, acc ->
-      handle_sse_event(event, acc)
-    end)
+    state =
+      Enum.reduce(events, state, fn event, acc ->
+        handle_sse_event(event, acc)
+      end)
 
     {:noreply, state}
   end
@@ -260,6 +266,33 @@ defmodule Harness.Providers.OpenCodeSession do
     {:noreply, %{state | ready_waiters: [from | state.ready_waiters]}}
   end
 
+  # --- Diagnostics ---
+
+  @impl true
+  def handle_call(:get_diagnostics, _from, state) do
+    alias Harness.Dev.DiagnosticsHelpers, as: DH
+
+    diagnostics = %{
+      thread_id: state.thread_id,
+      provider: state.provider,
+      opencode_port: state.opencode_port,
+      opencode_session_id: state.opencode_session_id,
+      base_url: state.base_url,
+      binary_path: state.binary_path,
+      ready: state.ready,
+      stopped: state.stopped,
+      reasoning_active: state.reasoning_active,
+      port_alive: DH.port_alive?(state.port),
+      sse_alive: state.sse_pid != nil and Process.alive?(state.sse_pid),
+      turn_state: DH.sanitize_turn_state(state.turn_state),
+      pending_permissions_count: map_size(state.pending_permissions),
+      message_count: length(state.messages),
+      sse_buffer_bytes: byte_size(state.sse_buffer || "")
+    }
+
+    {:reply, {:ok, diagnostics}, state}
+  end
+
   # --- Send Turn ---
 
   @impl true
@@ -271,11 +304,14 @@ defmodule Harness.Providers.OpenCodeSession do
 
     text = extract_text_from_input(input)
 
-    state = %{state | turn_state: %{
-      turn_id: turn_id,
-      started_at: now_iso(),
-      items: []
-    }}
+    state = %{
+      state
+      | turn_state: %{
+          turn_id: turn_id,
+          started_at: now_iso(),
+          items: []
+        }
+    }
 
     emit_event(state, :notification, "turn/started", %{
       "turn" => %{"id" => turn_id},
@@ -285,16 +321,20 @@ defmodule Harness.Providers.OpenCodeSession do
     # Send via prompt_async (non-blocking)
     case send_prompt_async(state, text, params) do
       :ok ->
-        resume_cursor = Jason.encode!(%{
-          "threadId" => state.thread_id,
-          "sessionId" => state.opencode_session_id,
-          "port" => state.opencode_port
-        })
-        {:reply, {:ok, %{
-          threadId: state.thread_id,
-          turnId: turn_id,
-          resumeCursor: resume_cursor
-        }}, state}
+        resume_cursor =
+          Jason.encode!(%{
+            "threadId" => state.thread_id,
+            "sessionId" => state.opencode_session_id,
+            "port" => state.opencode_port
+          })
+
+        {:reply,
+         {:ok,
+          %{
+            threadId: state.thread_id,
+            turnId: turn_id,
+            resumeCursor: resume_cursor
+          }}, state}
 
       {:error, reason} ->
         state = maybe_complete_turn(state, "failed")
@@ -323,11 +363,12 @@ defmodule Harness.Providers.OpenCodeSession do
       {pending, remaining} ->
         state = %{state | pending_permissions: remaining}
 
-        reply = case decision do
-          "accept" -> "once"
-          "acceptForSession" -> "always"
-          _ -> "reject"
-        end
+        reply =
+          case decision do
+            "accept" -> "once"
+            "acceptForSession" -> "always"
+            _ -> "reject"
+          end
 
         case reply_to_permission(state, Map.get(pending, :permission_id), reply) do
           :ok ->
@@ -335,6 +376,7 @@ defmodule Harness.Providers.OpenCodeSession do
               "requestId" => request_id,
               "decision" => decision
             })
+
             {:reply, :ok, state}
 
           {:error, reason} ->
@@ -360,17 +402,21 @@ defmodule Harness.Providers.OpenCodeSession do
 
         if permission_id do
           # Send the first answer as the reply text
-          answer_text = cond do
-            is_map(answers) ->
-              # Web client sends %{"questionId" => "answer"}
-              answers |> Map.values() |> List.first() |> to_string()
-            is_list(answers) ->
-              Enum.map_join(answers, "\n", &to_string/1)
-            is_binary(answers) ->
-              answers
-            true ->
-              ""
-          end
+          answer_text =
+            cond do
+              is_map(answers) ->
+                # Web client sends %{"questionId" => "answer"}
+                answers |> Map.values() |> List.first() |> to_string()
+
+              is_list(answers) ->
+                Enum.map_join(answers, "\n", &to_string/1)
+
+              is_binary(answers) ->
+                answers
+
+              true ->
+                ""
+            end
 
           reply_to_permission(state, permission_id, answer_text)
         end
@@ -390,9 +436,10 @@ defmodule Harness.Providers.OpenCodeSession do
   def handle_call(:read_thread, _from, state) do
     thread = %{
       threadId: state.thread_id,
-      turns: Enum.map(state.messages, fn m ->
-        %{id: Map.get(m, :turn_id, ""), items: Map.get(m, :items, [])}
-      end)
+      turns:
+        Enum.map(state.messages, fn m ->
+          %{id: Map.get(m, :turn_id, ""), items: Map.get(m, :items, [])}
+        end)
     }
 
     {:reply, {:ok, thread}, state}
@@ -429,10 +476,12 @@ defmodule Harness.Providers.OpenCodeSession do
     if state.port do
       try do
         port_info = Port.info(state.port)
+
         if port_info do
           os_pid = Keyword.get(port_info, :os_pid)
           if os_pid, do: System.cmd("kill", [to_string(os_pid)], stderr_to_stdout: true)
         end
+
         Port.close(state.port)
       catch
         _, _ -> :ok
@@ -469,22 +518,25 @@ defmodule Harness.Providers.OpenCodeSession do
 
     args = [
       "serve",
-      "--port", to_string(state.opencode_port),
-      "--hostname", "127.0.0.1"
+      "--port",
+      to_string(state.opencode_port),
+      "--hostname",
+      "127.0.0.1"
     ]
 
     try do
-      port = Port.open(
-        {:spawn_executable, to_charlist(state.binary_path)},
-        [
-          :binary,
-          :exit_status,
-          {:line, 65_536},
-          {:cd, to_charlist(cwd)},
-          {:args, Enum.map(args, &to_charlist/1)},
-          {:env, build_env()}
-        ]
-      )
+      port =
+        Port.open(
+          {:spawn_executable, to_charlist(state.binary_path)},
+          [
+            :binary,
+            :exit_status,
+            {:line, 65_536},
+            {:cd, to_charlist(cwd)},
+            {:args, Enum.map(args, &to_charlist/1)},
+            {:env, build_env()}
+          ]
+        )
 
       {:ok, port}
     rescue
@@ -501,7 +553,9 @@ defmodule Harness.Providers.OpenCodeSession do
 
   defp wait_for_server(base_url, attempts) do
     case http_get("#{base_url}/global/health") do
-      {:ok, %{"healthy" => true}} -> :ok
+      {:ok, %{"healthy" => true}} ->
+        :ok
+
       _ ->
         Process.sleep(1_000)
         wait_for_server(base_url, attempts - 1)
@@ -514,9 +568,10 @@ defmodule Harness.Providers.OpenCodeSession do
     parent = self()
     url = "#{state.base_url}/event"
 
-    pid = spawn(fn ->
-      sse_loop(parent, url)
-    end)
+    pid =
+      spawn(fn ->
+        sse_loop(parent, url)
+      end)
 
     # Monitor instead of link — crash won't kill GenServer
     Process.monitor(pid)
@@ -532,7 +587,8 @@ defmodule Harness.Providers.OpenCodeSession do
     path = uri.path || "/event"
 
     # Raw TCP with active mode — most reliable for SSE streaming
-    request = "GET #{path} HTTP/1.1\r\nHost: #{host}:#{port}\r\nAccept: text/event-stream\r\nConnection: keep-alive\r\n\r\n"
+    request =
+      "GET #{path} HTTP/1.1\r\nHost: #{host}:#{port}\r\nAccept: text/event-stream\r\nConnection: keep-alive\r\n\r\n"
 
     case :gen_tcp.connect(to_charlist(host), port, [:binary, {:active, true}], 10_000) do
       {:ok, socket} ->
@@ -549,21 +605,26 @@ defmodule Harness.Providers.OpenCodeSession do
   defp sse_tcp_loop(parent, socket, buffer, headers_done) do
     receive do
       {:tcp, ^socket, data} ->
-        Logger.debug("SSE raw data (#{byte_size(data)} bytes): #{inspect(String.slice(data, 0, 200))}")
+        Logger.debug(
+          "SSE raw data (#{byte_size(data)} bytes): #{inspect(String.slice(data, 0, 200))}"
+        )
+
         full = buffer <> data
 
         # Strip HTTP headers from first data
-        {body, hd} = if headers_done do
-          {full, true}
-        else
-          case String.split(full, "\r\n\r\n", parts: 2) do
-            [_headers, rest] ->
-              Logger.info("SSE headers stripped, streaming events...")
-              {rest, true}
-            _ ->
-              {full, false}
+        {body, hd} =
+          if headers_done do
+            {full, true}
+          else
+            case String.split(full, "\r\n\r\n", parts: 2) do
+              [_headers, rest] ->
+                Logger.info("SSE headers stripped, streaming events...")
+                {rest, true}
+
+              _ ->
+                {full, false}
+            end
           end
-        end
 
         if hd do
           # Extract SSE events directly from raw data (handles chunked encoding)
@@ -596,26 +657,35 @@ defmodule Harness.Providers.OpenCodeSession do
     # SSE format: "data: {json}\n\n" — we look for "data: " prefix
     lines = Regex.scan(~r/data: (\{[^\n]+\})/, raw)
 
-    events = Enum.flat_map(lines, fn
-      [_full, json] ->
-        case Jason.decode(json) do
-          {:ok, %{"type" => type, "properties" => props}} ->
-            [%{"type" => type, "data" => props}]
-          {:ok, parsed} ->
-            [%{"type" => Map.get(parsed, "type", "unknown"), "data" => parsed}]
-          _ -> []
-        end
-      _ -> []
-    end)
+    events =
+      Enum.flat_map(lines, fn
+        [_full, json] ->
+          case Jason.decode(json) do
+            {:ok, %{"type" => type, "properties" => props}} ->
+              [%{"type" => type, "data" => props}]
+
+            {:ok, parsed} ->
+              [%{"type" => Map.get(parsed, "type", "unknown"), "data" => parsed}]
+
+            _ ->
+              []
+          end
+
+        _ ->
+          []
+      end)
 
     # Keep any trailing incomplete data as buffer
     # Find the last complete "data: ...\n" and keep everything after
-    remaining = case Regex.scan(~r/data: \{[^\n]+\}\n/, raw, return: :index) do
-      [] -> raw
-      matches ->
-        {last_start, last_len} = List.last(List.last(matches))
-        String.slice(raw, (last_start + last_len)..-1//1)
-    end
+    remaining =
+      case Regex.scan(~r/data: \{[^\n]+\}\n/, raw, return: :index) do
+        [] ->
+          raw
+
+        matches ->
+          {last_start, last_len} = List.last(List.last(matches))
+          String.slice(raw, (last_start + last_len)..-1//1)
+      end
 
     {events, remaining}
   end
@@ -632,26 +702,31 @@ defmodule Harness.Providers.OpenCodeSession do
       parts ->
         {complete, [remaining]} = Enum.split(parts, -1)
 
-        events = Enum.flat_map(complete, fn part ->
-          lines = String.split(part, "\n")
-          event_type = Enum.find_value(lines, fn
-            "event: " <> type -> String.trim(type)
-            _ -> nil
-          end)
-          data = Enum.find_value(lines, fn
-            "data: " <> json -> String.trim(json)
-            _ -> nil
-          end)
+        events =
+          Enum.flat_map(complete, fn part ->
+            lines = String.split(part, "\n")
 
-          if event_type && data do
-            case Jason.decode(data) do
-              {:ok, parsed} -> [%{"type" => event_type, "data" => parsed}]
-              _ -> []
+            event_type =
+              Enum.find_value(lines, fn
+                "event: " <> type -> String.trim(type)
+                _ -> nil
+              end)
+
+            data =
+              Enum.find_value(lines, fn
+                "data: " <> json -> String.trim(json)
+                _ -> nil
+              end)
+
+            if event_type && data do
+              case Jason.decode(data) do
+                {:ok, parsed} -> [%{"type" => event_type, "data" => parsed}]
+                _ -> []
+              end
+            else
+              []
             end
-          else
-            []
-          end
-        end)
+          end)
 
         {events, remaining}
     end
@@ -664,17 +739,20 @@ defmodule Harness.Providers.OpenCodeSession do
     delta = Map.get(data, "delta", "")
     field = Map.get(data, "field", "text")
 
-    Logger.debug("OpenCode delta: field=#{inspect(field)} reasoning_active=#{state.reasoning_active} preview=#{String.slice(delta, 0, 60)}")
+    Logger.debug(
+      "OpenCode delta: field=#{inspect(field)} reasoning_active=#{state.reasoning_active} preview=#{String.slice(delta, 0, 60)}"
+    )
 
     # Determine stream kind: explicit "reasoning" field takes priority,
     # otherwise use the reasoning_active flag set by message.part.updated
     # to distinguish reasoning text from assistant text when both arrive
     # with field="text".
-    stream_kind = cond do
-      field == "reasoning" -> "reasoning_text"
-      state.reasoning_active -> "reasoning_text"
-      true -> "assistant_text"
-    end
+    stream_kind =
+      cond do
+        field == "reasoning" -> "reasoning_text"
+        state.reasoning_active -> "reasoning_text"
+        true -> "assistant_text"
+      end
 
     if delta != "" do
       emit_event(state, :notification, "content/delta", %{
@@ -696,20 +774,25 @@ defmodule Harness.Providers.OpenCodeSession do
     # mode. When a "text" part starts, exit reasoning mode. This allows
     # message.part.delta events (which all arrive with field="text") to be
     # correctly classified as reasoning vs assistant text.
-    state = cond do
-      part_type in ["reasoning", "thinking"] ->
-        %{state | reasoning_active: true}
-      part_type == "step" ->
-        # A "step" part often carries reasoning/thinking content
-        %{state | reasoning_active: true}
-      part_type == "text" ->
-        %{state | reasoning_active: false}
-      part_type == "tool" ->
-        # Tool execution is not reasoning
-        %{state | reasoning_active: false}
-      true ->
-        state
-    end
+    state =
+      cond do
+        part_type in ["reasoning", "thinking"] ->
+          %{state | reasoning_active: true}
+
+        part_type == "step" ->
+          # A "step" part often carries reasoning/thinking content
+          %{state | reasoning_active: true}
+
+        part_type == "text" ->
+          %{state | reasoning_active: false}
+
+        part_type == "tool" ->
+          # Tool execution is not reasoning
+          %{state | reasoning_active: false}
+
+        true ->
+          state
+      end
 
     turn_id = turn_id_from_state(state)
 
@@ -736,12 +819,15 @@ defmodule Harness.Providers.OpenCodeSession do
           "completed" ->
             # Stream tool output as content/delta before completing the item
             output = extract_tool_output(part)
+
             if output != "" do
-              stream_kind = case item_type do
-                "command_execution" -> "command_output"
-                "file_change" -> "file_change_output"
-                _ -> "tool_output"
-              end
+              stream_kind =
+                case item_type do
+                  "command_execution" -> "command_output"
+                  "file_change" -> "file_change_output"
+                  _ -> "tool_output"
+                end
+
               emit_event(state, :notification, "content/delta", %{
                 "streamKind" => stream_kind,
                 "delta" => output,
@@ -767,7 +853,8 @@ defmodule Harness.Providers.OpenCodeSession do
               "turnId" => turn_id
             })
 
-          _ -> :ok
+          _ ->
+            :ok
         end
 
       "text" ->
@@ -831,7 +918,8 @@ defmodule Harness.Providers.OpenCodeSession do
           "turnId" => turn_id
         })
 
-      _ -> :ok
+      _ ->
+        :ok
     end
 
     state
@@ -843,10 +931,12 @@ defmodule Harness.Providers.OpenCodeSession do
     cond do
       role == "assistant" && Map.has_key?(data, "error") && Map.get(data, "error") != nil ->
         error = Map.get(data, "error")
+
         emit_event(state, :error, "runtime/error", %{
           "message" => inspect(error),
           "class" => "provider_error"
         })
+
         maybe_complete_turn(state, "failed")
 
       true ->
@@ -879,7 +969,10 @@ defmodule Harness.Providers.OpenCodeSession do
         detail: extract_permission_detail(data)
       }
 
-      state = %{state | pending_permissions: Map.put(state.pending_permissions, request_id, pending)}
+      state = %{
+        state
+        | pending_permissions: Map.put(state.pending_permissions, request_id, pending)
+      }
 
       emit_event(state, :request, "request/opened", %{
         "requestId" => request_id,
@@ -901,18 +994,23 @@ defmodule Harness.Providers.OpenCodeSession do
     question = Map.get(data, "question", "")
     options = Map.get(data, "options", [])
 
-    questions = [%{
-      "id" => Map.get(data, "id", request_id),
-      "question" => question,
-      "options" => options
-    }]
+    questions = [
+      %{
+        "id" => Map.get(data, "id", request_id),
+        "question" => question,
+        "options" => options
+      }
+    ]
 
     pending = %{
       question_id: Map.get(data, "id"),
       questions: questions
     }
 
-    state = %{state | pending_permissions: Map.put(state.pending_permissions, request_id, pending)}
+    state = %{
+      state
+      | pending_permissions: Map.put(state.pending_permissions, request_id, pending)
+    }
 
     emit_event(state, :request, "user-input/requested", %{
       "requestId" => request_id,
@@ -953,6 +1051,7 @@ defmodule Harness.Providers.OpenCodeSession do
   # session.status carries the OpenCode-native status (busy/idle)
   defp handle_sse_event(%{"type" => "session.status", "data" => data}, state) do
     status_type = get_in(data, ["status", "type"])
+
     case status_type do
       "idle" ->
         # Complete the turn FIRST, then emit ready state.
@@ -962,9 +1061,11 @@ defmodule Harness.Providers.OpenCodeSession do
         state = maybe_complete_turn(state, "completed")
         emit_event(state, :session, "session/state-changed", %{"state" => "ready"})
         state
+
       "busy" ->
         emit_event(state, :session, "session/state-changed", %{"state" => "running"})
         state
+
       _ ->
         state
     end
@@ -992,8 +1093,10 @@ defmodule Harness.Providers.OpenCodeSession do
     case Req.get(url, receive_timeout: 10_000) do
       {:ok, %{status: status, body: body}} when status in 200..204 ->
         if is_map(body), do: {:ok, body}, else: Jason.decode(to_string(body))
+
       {:ok, %{status: status, body: body}} ->
         {:error, "HTTP #{status}: #{inspect(body) |> String.slice(0, 200)}"}
+
       {:error, reason} ->
         {:error, inspect(reason)}
     end
@@ -1008,8 +1111,10 @@ defmodule Harness.Providers.OpenCodeSession do
           body_str = to_string(body || "")
           if body_str == "", do: {:ok, %{}}, else: Jason.decode(body_str)
         end
+
       {:ok, %{status: status, body: body}} ->
         {:error, "HTTP #{status}: #{inspect(body) |> String.slice(0, 200)}"}
+
       {:error, reason} ->
         {:error, inspect(reason)}
     end
@@ -1029,8 +1134,11 @@ defmodule Harness.Providers.OpenCodeSession do
     # The model field is NOT accepted here (causes HTTP 400).
     # Model is set at session creation time, not per-prompt.
     if model = Map.get(params || %{}, "model") do
-      Logger.warning("OpenCode ignores per-turn model override: #{inspect(model)}. Model is fixed at session creation.")
+      Logger.warning(
+        "OpenCode ignores per-turn model override: #{inspect(model)}. Model is fixed at session creation."
+      )
     end
+
     body = %{
       "parts" => [%{"type" => "text", "text" => text}]
     }
@@ -1055,6 +1163,7 @@ defmodule Harness.Providers.OpenCodeSession do
 
   defp reply_to_permission(state, permission_id, reply) do
     url = "#{state.base_url}/session/#{state.opencode_session_id}/permissions/#{permission_id}"
+
     case http_post(url, %{"response" => reply}) do
       {:ok, _} -> :ok
       {:error, reason} -> {:error, reason}
@@ -1085,13 +1194,14 @@ defmodule Harness.Providers.OpenCodeSession do
   defp turn_id_from_state(_), do: nil
 
   defp emit_event(state, kind, method, payload) do
-    event = Event.new(%{
-      thread_id: state.thread_id,
-      provider: state.provider,
-      kind: kind,
-      method: method,
-      payload: payload
-    })
+    event =
+      Event.new(%{
+        thread_id: state.thread_id,
+        provider: state.provider,
+        kind: kind,
+        method: method,
+        payload: payload
+      })
 
     state.event_callback.(event)
   end
@@ -1113,15 +1223,28 @@ defmodule Harness.Providers.OpenCodeSession do
 
     cond do
       String.contains?(name, "bash") or String.contains?(name, "command") or
-        String.contains?(name, "shell") -> "command_execution"
+          String.contains?(name, "shell") ->
+        "command_execution"
+
       String.contains?(name, "edit") or String.contains?(name, "write") or
-        String.contains?(name, "file") or String.contains?(name, "patch") -> "file_change"
+        String.contains?(name, "file") or String.contains?(name, "patch") ->
+        "file_change"
+
       String.contains?(name, "read") or String.contains?(name, "glob") or
-        String.contains?(name, "grep") -> "file_read"
-      String.contains?(name, "mcp") -> "mcp_tool_call"
-      String.contains?(name, "agent") or String.contains?(name, "task") -> "collab_agent_tool_call"
-      String.contains?(name, "web") and String.contains?(name, "search") -> "web_search"
-      true -> "dynamic_tool_call"
+          String.contains?(name, "grep") ->
+        "file_read"
+
+      String.contains?(name, "mcp") ->
+        "mcp_tool_call"
+
+      String.contains?(name, "agent") or String.contains?(name, "task") ->
+        "collab_agent_tool_call"
+
+      String.contains?(name, "web") and String.contains?(name, "search") ->
+        "web_search"
+
+      true ->
+        "dynamic_tool_call"
     end
   end
 
@@ -1175,7 +1298,9 @@ defmodule Harness.Providers.OpenCodeSession do
   defp generate_id do
     Base.encode16(:crypto.strong_rand_bytes(16), case: :lower)
     |> then(fn hex ->
-      <<a::binary-size(8), b::binary-size(4), c::binary-size(4), d::binary-size(4), e::binary-size(12)>> = hex
+      <<a::binary-size(8), b::binary-size(4), c::binary-size(4), d::binary-size(4),
+        e::binary-size(12)>> = hex
+
       "#{a}-#{b}-#{c}-#{d}-#{e}"
     end)
   end

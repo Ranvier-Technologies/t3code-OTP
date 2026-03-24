@@ -123,12 +123,16 @@ defmodule Harness.Providers.CursorSession do
   # just means the turn finished. Keep the GenServer alive for multi-turn.
   @impl true
   def handle_info({port, {:exit_status, status}}, %{port: port} = state) do
-    state = if state.stopped do
-      state
-    else
-      Logger.info("Cursor Agent process exited with status #{status} for thread #{state.thread_id}")
-      maybe_complete_turn(state, if(status == 0, do: "completed", else: "failed"))
-    end
+    state =
+      if state.stopped do
+        state
+      else
+        Logger.info(
+          "Cursor Agent process exited with status #{status} for thread #{state.thread_id}"
+        )
+
+        maybe_complete_turn(state, if(status == 0, do: "completed", else: "failed"))
+      end
 
     # Clear the port ref but keep the GenServer alive for subsequent turns.
     # The resume_session_id captured from system/init enables --resume on next turn.
@@ -150,6 +154,31 @@ defmodule Harness.Providers.CursorSession do
     {:noreply, state}
   end
 
+  # --- Diagnostics ---
+
+  @impl true
+  def handle_call(:get_diagnostics, _from, state) do
+    alias Harness.Dev.DiagnosticsHelpers, as: DH
+
+    diagnostics = %{
+      thread_id: state.thread_id,
+      provider: state.provider,
+      session_id: state.session_id,
+      resume_session_id: state.resume_session_id,
+      binary_path: state.binary_path,
+      stopped: state.stopped,
+      has_real_chat_id: state.has_real_chat_id,
+      reasoning_item_id: state.reasoning_item_id,
+      port_alive: DH.port_alive?(state.port),
+      turn_state: DH.sanitize_turn_state(state.turn_state),
+      pending_approvals_count: map_size(state.pending_approvals),
+      turn_count: length(state.turns),
+      buffer_bytes: byte_size(state.buffer || "")
+    }
+
+    {:reply, {:ok, diagnostics}, state}
+  end
+
   # --- Send Turn ---
 
   @impl true
@@ -157,18 +186,26 @@ defmodule Harness.Providers.CursorSession do
     # Auto-complete any stale turn and kill previous process.
     # Wait for exit_status to avoid stale events leaking into the new turn.
     state = maybe_complete_turn(state, "completed")
-    state = if state.port do
-      try do Port.close(state.port) catch _, _ -> :ok end
-      # Drain any pending exit_status message from the closed port
-      receive do
-        {_, {:exit_status, _}} -> :ok
-      after
-        500 -> :ok
+
+    state =
+      if state.port do
+        try do
+          Port.close(state.port)
+        catch
+          _, _ -> :ok
+        end
+
+        # Drain any pending exit_status message from the closed port
+        receive do
+          {_, {:exit_status, _}} -> :ok
+        after
+          500 -> :ok
+        end
+
+        %{state | port: nil}
+      else
+        state
       end
-      %{state | port: nil}
-    else
-      state
-    end
 
     turn_id = generate_id()
     input = Map.get(params, "input", [])
@@ -192,16 +229,19 @@ defmodule Harness.Providers.CursorSession do
 
     # Spawn cursor agent with --print and the prompt as argument
     model = Map.get(params, "model", Map.get(state.params, "model"))
+
     case spawn_cursor_with_prompt(state, model, text) do
       {:ok, port} ->
         state = %{state | port: port}
         resume_cursor = build_resume_cursor(state)
 
-        {:reply, {:ok, %{
-          threadId: state.thread_id,
-          turnId: turn_id,
-          resumeCursor: resume_cursor
-        }}, state}
+        {:reply,
+         {:ok,
+          %{
+            threadId: state.thread_id,
+            turnId: turn_id,
+            resumeCursor: resume_cursor
+          }}, state}
 
       {:error, reason} ->
         Logger.error("Failed to spawn cursor agent: #{inspect(reason)}")
@@ -223,6 +263,7 @@ defmodule Harness.Providers.CursorSession do
     if state.port do
       try do
         port_info = Port.info(state.port)
+
         if port_info do
           os_pid = Keyword.get(port_info, :os_pid)
           if os_pid, do: System.cmd("kill", ["-2", to_string(os_pid)], stderr_to_stdout: true)
@@ -247,19 +288,22 @@ defmodule Harness.Providers.CursorSession do
       {pending, remaining} ->
         state = %{state | pending_approvals: remaining}
 
-        behavior = case decision do
-          "accept" -> "allow"
-          "acceptForSession" -> "allow"
-          "allow" -> "allow"
-          _ -> "deny"
-        end
+        behavior =
+          case decision do
+            "accept" -> "allow"
+            "acceptForSession" -> "allow"
+            "allow" -> "allow"
+            _ -> "deny"
+          end
 
-        response = Jason.encode!(%{
-          "type" => "permission_response",
-          "tool_use_id" => Map.get(pending, :tool_use_id),
-          "behavior" => behavior,
-          "message" => if(behavior == "deny", do: "User denied", else: nil)
-        })
+        response =
+          Jason.encode!(%{
+            "type" => "permission_response",
+            "tool_use_id" => Map.get(pending, :tool_use_id),
+            "behavior" => behavior,
+            "message" => if(behavior == "deny", do: "User denied", else: nil)
+          })
+
         send_to_port(state, response)
 
         emit_event(state, :notification, "request/resolved", %{
@@ -284,10 +328,12 @@ defmodule Harness.Providers.CursorSession do
   def handle_call(:read_thread, _from, state) do
     thread = %{
       threadId: state.thread_id,
-      turns: Enum.map(state.turns, fn t ->
-        %{id: t.turn_id, items: Map.get(t, :items, [])}
-      end)
+      turns:
+        Enum.map(state.turns, fn t ->
+          %{id: t.turn_id, items: Map.get(t, :items, [])}
+        end)
     }
+
     {:reply, {:ok, thread}, state}
   end
 
@@ -302,7 +348,8 @@ defmodule Harness.Providers.CursorSession do
     if port do
       try do
         Port.close(port)
-      catch _, _ -> :ok
+      catch
+        _, _ -> :ok
       end
     end
 
@@ -314,7 +361,9 @@ defmodule Harness.Providers.CursorSession do
   # Parse resumeCursor JSON to extract the Cursor chatId for --resume
   defp extract_resume_session_id(params) do
     case get_in(params, ["resumeCursor"]) do
-      nil -> nil
+      nil ->
+        nil
+
       cursor when is_binary(cursor) ->
         case Jason.decode(cursor) do
           {:ok, %{"cursorChatId" => chat_id}} when is_binary(chat_id) -> chat_id
@@ -322,7 +371,9 @@ defmodule Harness.Providers.CursorSession do
           {:ok, %{"resume" => chat_id}} when is_binary(chat_id) -> chat_id
           _ -> nil
         end
-      _ -> nil
+
+      _ ->
+        nil
     end
   end
 
@@ -333,6 +384,7 @@ defmodule Harness.Providers.CursorSession do
     try do
       {output, 0} = System.cmd(binary_path, ["agent", "create-chat"], stderr_to_stdout: true)
       chat_id = String.trim(output)
+
       if String.match?(chat_id, ~r/^[0-9a-f-]+$/i) do
         Logger.info("Created Cursor chat: #{chat_id}")
         chat_id
@@ -369,17 +421,18 @@ defmodule Harness.Providers.CursorSession do
 
   defp spawn_cursor_process(state, cwd, args) do
     try do
-      port = Port.open(
-        {:spawn_executable, to_charlist(state.binary_path)},
-        [
-          :binary,
-          :exit_status,
-          {:line, 1_048_576},
-          {:cd, to_charlist(cwd)},
-          {:args, Enum.map(args, &to_charlist/1)},
-          {:env, build_env()}
-        ]
-      )
+      port =
+        Port.open(
+          {:spawn_executable, to_charlist(state.binary_path)},
+          [
+            :binary,
+            :exit_status,
+            {:line, 1_048_576},
+            {:cd, to_charlist(cwd)},
+            {:args, Enum.map(args, &to_charlist/1)},
+            {:env, build_env()}
+          ]
+        )
 
       {:ok, port}
     rescue
@@ -393,7 +446,8 @@ defmodule Harness.Providers.CursorSession do
     args = [
       "agent",
       "--print",
-      "--output-format", "stream-json",
+      "--output-format",
+      "stream-json",
       "--stream-partial-output",
       "--trust",
       "--approve-mcps",
@@ -401,32 +455,37 @@ defmodule Harness.Providers.CursorSession do
     ]
 
     # Execution mode: --mode plan|ask
-    args = case Map.get(cursor_opts, "mode") do
-      mode when mode in ["plan", "ask"] -> args ++ ["--mode", mode]
-      _ -> args
-    end
+    args =
+      case Map.get(cursor_opts, "mode") do
+        mode when mode in ["plan", "ask"] -> args ++ ["--mode", mode]
+        _ -> args
+      end
 
     # Add model if specified
-    args = if model do
-      args ++ ["--model", model]
-    else
-      args
-    end
+    args =
+      if model do
+        args ++ ["--model", model]
+      else
+        args
+      end
 
     # Add workspace if specified
-    args = case Map.get(state.params, "cwd") do
-      nil -> args
-      cwd -> args ++ ["--workspace", cwd]
-    end
+    args =
+      case Map.get(state.params, "cwd") do
+        nil -> args
+        cwd -> args ++ ["--workspace", cwd]
+      end
 
     # Resume: only use --resume with a real Cursor chatId (from create-chat,
     # system/init, or resumeCursor). Never pass a synthetic generate_id() value.
     chat_id = state.resume_session_id || (state.has_real_chat_id && state.session_id)
-    args = if is_binary(chat_id) do
-      args ++ ["--resume", chat_id]
-    else
-      args
-    end
+
+    args =
+      if is_binary(chat_id) do
+        args ++ ["--resume", chat_id]
+      else
+        args
+      end
 
     # Append prompt at the end
     if prompt do
@@ -447,12 +506,14 @@ defmodule Harness.Providers.CursorSession do
 
   defp process_line(line, state) do
     line = String.trim(line)
+
     if line == "" do
       state
     else
       case Jason.decode(line) do
         {:ok, msg} ->
           handle_stream_message(msg, state)
+
         {:error, _} ->
           Logger.debug("Non-JSON cursor output: #{String.slice(line, 0, 200)}")
           state
@@ -476,18 +537,21 @@ defmodule Harness.Providers.CursorSession do
   defp handle_stream_message(%{"type" => "thinking", "subtype" => "delta", "text" => text}, state)
        when is_binary(text) and text != "" do
     # Emit item/started on the first reasoning delta to create a proper lifecycle
-    state = if state.reasoning_item_id == nil do
-      item_id = generate_id()
-      emit_event(state, :notification, "item/started", %{
-        "itemId" => item_id,
-        "itemType" => "reasoning",
-        "toolName" => "Thinking",
-        "turnId" => turn_id_from_state(state)
-      })
-      %{state | reasoning_item_id: item_id}
-    else
-      state
-    end
+    state =
+      if state.reasoning_item_id == nil do
+        item_id = generate_id()
+
+        emit_event(state, :notification, "item/started", %{
+          "itemId" => item_id,
+          "itemType" => "reasoning",
+          "toolName" => "Thinking",
+          "turnId" => turn_id_from_state(state)
+        })
+
+        %{state | reasoning_item_id: item_id}
+      else
+        state
+      end
 
     emit_event(state, :notification, "content/delta", %{
       "streamKind" => "reasoning_text",
@@ -495,6 +559,7 @@ defmodule Harness.Providers.CursorSession do
       "itemId" => state.reasoning_item_id,
       "turnId" => turn_id_from_state(state)
     })
+
     state
   end
 
@@ -507,6 +572,7 @@ defmodule Harness.Providers.CursorSession do
         "status" => "completed",
         "turnId" => turn_id_from_state(state)
       })
+
       %{state | reasoning_item_id: nil}
     else
       state
@@ -518,6 +584,7 @@ defmodule Harness.Providers.CursorSession do
   defp handle_stream_message(%{"type" => "assistant", "timestamp_ms" => _} = msg, state) do
     content = get_in(msg, ["message", "content"]) || []
     turn_id = turn_id_from_state(state)
+
     Enum.each(content, fn
       %{"type" => "text", "text" => text} when is_binary(text) and text != "" ->
         emit_event(state, :notification, "content/delta", %{
@@ -525,9 +592,11 @@ defmodule Harness.Providers.CursorSession do
           "delta" => text,
           "turnId" => turn_id
         })
+
       _ ->
         :ok
     end)
+
     state
   end
 
@@ -535,25 +604,34 @@ defmodule Harness.Providers.CursorSession do
   defp handle_stream_message(%{"type" => "assistant"}, state), do: state
 
   defp handle_stream_message(%{"type" => "result", "subtype" => subtype} = msg, state) do
-    status = case subtype do
-      "success" -> "completed"
-      "error" ->
-        error_msg = get_in(msg, ["error", "message"]) || get_in(msg, ["error"]) || "unknown error"
-        error_str = if is_binary(error_msg), do: error_msg, else: inspect(error_msg)
+    status =
+      case subtype do
+        "success" ->
+          "completed"
 
-        emit_event(state, :error, "runtime/error", %{
-          "message" => error_str,
-          "class" => "provider_error",
-          "provider" => "cursor"
-        })
-        "failed"
-      _ -> "completed"
-    end
+        "error" ->
+          error_msg =
+            get_in(msg, ["error", "message"]) || get_in(msg, ["error"]) || "unknown error"
+
+          error_str = if is_binary(error_msg), do: error_msg, else: inspect(error_msg)
+
+          emit_event(state, :error, "runtime/error", %{
+            "message" => error_str,
+            "class" => "provider_error",
+            "provider" => "cursor"
+          })
+
+          "failed"
+
+        _ ->
+          "completed"
+      end
 
     state = maybe_complete_turn(state, status)
 
     # Emit usage if present
     duration = Map.get(msg, "duration_ms")
+
     if duration do
       emit_event(state, :notification, "thread/token-usage-updated", %{
         "duration_ms" => duration
@@ -591,22 +669,24 @@ defmodule Harness.Providers.CursorSession do
     {item_type, tool_name, _detail} = classify_cursor_tool(tool_call)
 
     # Extract result status
-    status = cond do
-      get_in(tool_call, [tool_call_key(tool_call), "result", "success"]) -> "completed"
-      get_in(tool_call, [tool_call_key(tool_call), "result", "error"]) -> "failed"
-      true -> "completed"
-    end
+    status =
+      cond do
+        get_in(tool_call, [tool_call_key(tool_call), "result", "success"]) -> "completed"
+        get_in(tool_call, [tool_call_key(tool_call), "result", "error"]) -> "failed"
+        true -> "completed"
+      end
 
     # Extract output for content delta (command stdout/stderr)
     result = get_in(tool_call, [tool_call_key(tool_call), "result", "success"]) || %{}
     output = Map.get(result, "stdout") || Map.get(result, "interleavedOutput") || ""
 
     if output != "" do
-      stream_kind = case item_type do
-        "command_execution" -> "command_output"
-        "file_change" -> "file_change_output"
-        _ -> "tool_output"
-      end
+      stream_kind =
+        case item_type do
+          "command_execution" -> "command_output"
+          "file_change" -> "file_change_output"
+          _ -> "tool_output"
+        end
 
       emit_event(state, :notification, "content/delta", %{
         "streamKind" => stream_kind,
@@ -690,13 +770,14 @@ defmodule Harness.Providers.CursorSession do
   defp turn_id_from_state(_), do: nil
 
   defp emit_event(state, kind, method, payload) do
-    event = Event.new(%{
-      thread_id: state.thread_id,
-      provider: state.provider,
-      kind: kind,
-      method: method,
-      payload: payload
-    })
+    event =
+      Event.new(%{
+        thread_id: state.thread_id,
+        provider: state.provider,
+        kind: kind,
+        method: method,
+        payload: payload
+      })
 
     state.event_callback.(event)
   end
@@ -715,6 +796,7 @@ defmodule Harness.Providers.CursorSession do
       _ -> ""
     end)
   end
+
   defp extract_text(input) when is_binary(input), do: input
   defp extract_text(_), do: ""
 
@@ -730,7 +812,9 @@ defmodule Harness.Providers.CursorSession do
 
   defp split_lines(buffer) do
     case String.split(buffer, "\n") do
-      [single] -> {[], single}
+      [single] ->
+        {[], single}
+
       parts ->
         {lines, [remaining]} = Enum.split(parts, -1)
         {lines, remaining}
@@ -740,7 +824,9 @@ defmodule Harness.Providers.CursorSession do
   defp generate_id do
     Base.encode16(:crypto.strong_rand_bytes(16), case: :lower)
     |> then(fn hex ->
-      <<a::binary-size(8), b::binary-size(4), c::binary-size(4), d::binary-size(4), e::binary-size(12)>> = hex
+      <<a::binary-size(8), b::binary-size(4), c::binary-size(4), d::binary-size(4),
+        e::binary-size(12)>> = hex
+
       "#{a}-#{b}-#{c}-#{d}-#{e}"
     end)
   end
@@ -770,33 +856,41 @@ defmodule Harness.Providers.CursorSession do
   defp classify_cursor_tool(tool_call) when is_map(tool_call) do
     # First try known tool types
     case Enum.find_value(@cursor_tool_types, fn {key, {item_type, tool_name}} ->
-      case Map.get(tool_call, key) do
-        nil -> nil
-        inner ->
-          detail = extract_tool_detail(key, inner)
-          {item_type, tool_name, detail}
-      end
-    end) do
+           case Map.get(tool_call, key) do
+             nil ->
+               nil
+
+             inner ->
+               detail = extract_tool_detail(key, inner)
+               {item_type, tool_name, detail}
+           end
+         end) do
       nil ->
         # Fallback: auto-detect any key ending in "ToolCall" and derive a human name
         case Enum.find(Map.keys(tool_call), &String.ends_with?(&1, "ToolCall")) do
           nil ->
             Logger.warning("Unclassified Cursor tool_call keys: #{inspect(Map.keys(tool_call))}")
             {"dynamic_tool_call", "tool", nil}
+
           key ->
             # "readDirectoryToolCall" → "read_directory"
-            human_name = key
+            human_name =
+              key
               |> String.replace_trailing("ToolCall", "")
               |> Macro.underscore()
               |> String.replace("_", " ")
+
             inner = Map.get(tool_call, key, %{})
             detail = extract_tool_detail(key, inner)
             Logger.info("Auto-classified Cursor tool: #{key} → #{human_name}")
             {"dynamic_tool_call", human_name, detail}
         end
-      result -> result
+
+      result ->
+        result
     end
   end
+
   defp classify_cursor_tool(_), do: {"dynamic_tool_call", "tool", nil}
 
   defp tool_call_key(tool_call) when is_map(tool_call) do
@@ -805,26 +899,33 @@ defmodule Harness.Providers.CursorSession do
       if Map.has_key?(tool_call, key), do: key
     end) || Enum.find(Map.keys(tool_call), &String.ends_with?(&1, "ToolCall"))
   end
+
   defp tool_call_key(_), do: nil
 
   defp extract_tool_detail("shellToolCall", inner) do
     get_in(inner, ["args", "command"]) || get_in(inner, ["description"])
   end
+
   defp extract_tool_detail("fileEditToolCall", inner) do
     get_in(inner, ["args", "filePath"]) || get_in(inner, ["description"])
   end
+
   defp extract_tool_detail("fileReadToolCall", inner) do
     get_in(inner, ["args", "filePath"]) || get_in(inner, ["description"])
   end
+
   defp extract_tool_detail("createFileToolCall", inner) do
     get_in(inner, ["args", "filePath"]) || get_in(inner, ["description"])
   end
+
   defp extract_tool_detail("deleteFileToolCall", inner) do
     get_in(inner, ["args", "filePath"]) || get_in(inner, ["description"])
   end
+
   defp extract_tool_detail("renameFileToolCall", inner) do
     get_in(inner, ["args", "filePath"]) || get_in(inner, ["description"])
   end
+
   defp extract_tool_detail(_, inner) do
     Map.get(inner, "description") || Map.get(inner, "query")
   end
