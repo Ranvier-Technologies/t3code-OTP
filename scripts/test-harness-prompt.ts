@@ -41,14 +41,14 @@ function send(ws: WebSocket, event: string, payload: Record<string, unknown>): P
 }
 
 function formatEvent(payload: Record<string, unknown>): string {
-  const method = payload.method as string ?? "?";
-  const kind = payload.kind as string ?? "?";
+  const method = (payload.method as string) ?? "?";
+  const kind = (payload.kind as string) ?? "?";
   const inner = payload.payload as Record<string, unknown> | undefined;
 
   // Content delta — show the text
   if (method === "content/delta" && inner) {
-    const delta = inner.delta as string ?? "";
-    const streamKind = inner.streamKind as string ?? "";
+    const delta = (inner.delta as string) ?? "";
+    const streamKind = (inner.streamKind as string) ?? "";
     if (streamKind === "assistant_text") {
       assistantText += delta;
       return `\x1b[32m${delta}\x1b[0m`;
@@ -72,15 +72,15 @@ function formatEvent(payload: Record<string, unknown>): string {
 
   // Item events (tool use)
   if (method.startsWith("item/")) {
-    const toolName = inner?.toolName as string ?? "";
-    const itemType = inner?.itemType as string ?? "";
+    const toolName = (inner?.toolName as string) ?? "";
+    const itemType = (inner?.itemType as string) ?? "";
     return `\x1b[35m[${method}]\x1b[0m ${itemType} ${toolName}`.trim();
   }
 
   // Request events (approvals)
   if (method.startsWith("request/")) {
-    const requestType = inner?.requestType as string ?? "";
-    const detail = inner?.detail as string ?? "";
+    const requestType = (inner?.requestType as string) ?? "";
+    const detail = (inner?.detail as string) ?? "";
     return `\x1b[31m[${method}]\x1b[0m ${requestType} — ${detail}`;
   }
 
@@ -103,7 +103,13 @@ async function main() {
 
   ws.on("message", (raw) => {
     const msg = JSON.parse(raw.toString());
-    const [, ref, , event, payload] = msg as [string | null, string | null, string, string, Record<string, unknown>];
+    const [, ref, , event, payload] = msg as [
+      string | null,
+      string | null,
+      string,
+      string,
+      Record<string, unknown>,
+    ];
 
     // Handle replies
     if (event === "phx_reply" && ref && pending.has(ref)) {
@@ -146,12 +152,12 @@ async function main() {
   // Start session
   const threadId = `prompt-${PROVIDER}-${Date.now()}`;
   console.log(`── Starting ${PROVIDER} session ──`);
-  const startResp = await send(ws, "session.start", {
+  const startResp = (await send(ws, "session.start", {
     threadId,
     provider: PROVIDER,
     cwd: CWD,
     model: PROVIDER === "claudeAgent" ? "claude-sonnet-4-6" : undefined,
-  }) as { session: { status: string } };
+  })) as { session: { status: string } };
   console.log(`  Session: ${startResp.session.status}\n`);
 
   // Wait for session to be ready
@@ -194,11 +200,15 @@ async function main() {
   console.log(`\n\n── Summary ──`);
   console.log(`  Total events: ${eventCount}`);
   if (assistantText) {
-    console.log(`  Assistant response: "${assistantText.slice(0, 200)}${assistantText.length > 200 ? "..." : ""}"`);
+    console.log(
+      `  Assistant response: "${assistantText.slice(0, 200)}${assistantText.length > 200 ? "..." : ""}"`,
+    );
   }
 
   // Get final snapshot
-  const snap = await send(ws, "snapshot.get", {}) as { snapshot: { sequence: number; sessions: Record<string, { status: string }> } };
+  const snap = (await send(ws, "snapshot.get", {})) as {
+    snapshot: { sequence: number; sessions: Record<string, { status: string }> };
+  };
   const session = snap.snapshot.sessions[threadId];
   if (session) {
     console.log(`  Session status: ${session.status}`);

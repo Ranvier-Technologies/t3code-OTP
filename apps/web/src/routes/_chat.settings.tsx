@@ -72,6 +72,7 @@ function SettingsRouteView() {
 
   const codexBinaryPath = settings.codexBinaryPath;
   const codexHomePath = settings.codexHomePath;
+  const claudeBinaryPath = settings.claudeBinaryPath;
   const keybindingsConfigPath = serverConfigQuery.data?.keybindingsConfigPath ?? null;
   const availableEditors = serverConfigQuery.data?.availableEditors;
 
@@ -316,6 +317,20 @@ function SettingsRouteView() {
                   />
                   <span className="text-xs text-muted-foreground">
                     Optional custom Codex home/config directory.
+                  </span>
+                </label>
+
+                <label htmlFor="claude-binary-path" className="block space-y-1">
+                  <span className="text-xs font-medium text-foreground">Claude binary path</span>
+                  <Input
+                    id="claude-binary-path"
+                    value={claudeBinaryPath}
+                    onChange={(event) => updateSettings({ claudeBinaryPath: event.target.value })}
+                    placeholder="claude"
+                    spellCheck={false}
+                  />
+                  <span className="text-xs text-muted-foreground">
+                    Leave blank to use <code>claude</code> from your PATH.
                   </span>
                 </label>
 

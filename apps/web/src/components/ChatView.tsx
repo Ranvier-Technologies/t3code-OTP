@@ -619,16 +619,25 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const selectedPromptEffort = composerProviderState.promptEffort;
   const selectedModelOptionsForDispatch = composerProviderState.modelOptionsForDispatch;
   const providerOptionsForDispatch = useMemo(() => {
-    if (!settings.codexBinaryPath && !settings.codexHomePath) {
+    const hasCodex = settings.codexBinaryPath || settings.codexHomePath;
+    const hasClaude = settings.claudeBinaryPath;
+    if (!hasCodex && !hasClaude) {
       return undefined;
     }
     return {
-      codex: {
-        ...(settings.codexBinaryPath ? { binaryPath: settings.codexBinaryPath } : {}),
-        ...(settings.codexHomePath ? { homePath: settings.codexHomePath } : {}),
-      },
+      ...(hasCodex
+        ? {
+            codex: {
+              ...(settings.codexBinaryPath ? { binaryPath: settings.codexBinaryPath } : {}),
+              ...(settings.codexHomePath ? { homePath: settings.codexHomePath } : {}),
+            },
+          }
+        : {}),
+      ...(hasClaude
+        ? { claudeAgent: { binaryPath: settings.claudeBinaryPath } }
+        : {}),
     };
-  }, [settings.codexBinaryPath, settings.codexHomePath]);
+  }, [settings.codexBinaryPath, settings.codexHomePath, settings.claudeBinaryPath]);
   const selectedModelForPicker = selectedModel;
   const phase = derivePhase(activeThread?.session ?? null);
   const isSendBusy = sendPhase !== "idle";

@@ -45,12 +45,8 @@ export const MODEL_OPTIONS_BY_PROVIDER = {
     { slug: "claude-sonnet-4-6", name: "Claude Sonnet 4.6" },
     { slug: "claude-haiku-4-5", name: "Claude Haiku 4.5" },
   ],
-  cursor: [
-    { slug: "auto", name: "Auto (account default)" },
-  ],
-  opencode: [
-    { slug: "auto", name: "Auto (account default)" },
-  ],
+  cursor: [{ slug: "auto", name: "Auto (account default)" }],
+  opencode: [{ slug: "auto", name: "Auto (account default)" }],
 } as const satisfies Record<ProviderKind, readonly ModelOption[]>;
 export type ModelOptionsByProvider = typeof MODEL_OPTIONS_BY_PROVIDER;
 
@@ -104,7 +100,10 @@ export const REASONING_EFFORT_OPTIONS_BY_PROVIDER = {
 
 // cursor and opencode don't support reasoning effort configuration,
 // so their defaults are undefined. Consumers must handle the undefined case.
-export const DEFAULT_REASONING_EFFORT_BY_PROVIDER: Record<ProviderKind, ProviderReasoningEffort | undefined> = {
+export const DEFAULT_REASONING_EFFORT_BY_PROVIDER: Record<
+  ProviderKind,
+  ProviderReasoningEffort | undefined
+> = {
   codex: "high",
   claudeAgent: "high",
   cursor: undefined,

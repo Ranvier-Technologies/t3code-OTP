@@ -165,7 +165,9 @@ function trackEvent(stats: SessionStats, method: string, payload: unknown) {
   stats.lastEventAt = now;
 
   let payloadSize = 0;
-  try { payloadSize = JSON.stringify(payload).length; } catch {}
+  try {
+    payloadSize = JSON.stringify(payload).length;
+  } catch {}
   stats.totalPayloadBytes += payloadSize;
 
   const p = payload as Record<string, unknown>;
@@ -184,18 +186,28 @@ function trackEvent(stats: SessionStats, method: string, payload: unknown) {
   if (p?.turnId) logEntry.turnId = String(p.turnId);
 
   // Only log interesting events (not every delta)
-  const isInteresting = method.includes("collab") || method.includes("spawn") ||
-    method.includes("interaction") || method.includes("waiting") ||
+  const isInteresting =
+    method.includes("collab") ||
+    method.includes("spawn") ||
+    method.includes("interaction") ||
+    method.includes("waiting") ||
     method.includes("terminal") ||
-    method === "turn/started" || method === "turn/completed" ||
-    method === "item/started" || method === "item/completed" ||
-    m === "task_started" || m === "task_complete";
+    method === "turn/started" ||
+    method === "turn/completed" ||
+    method === "item/started" ||
+    method === "item/completed" ||
+    m === "task_started" ||
+    m === "task_complete";
 
   if (isInteresting) stats.events.push(logEntry);
 
   // Match both raw method names and codex/event/ prefixed versions
-  if (method === "item/agentMessage/delta" || method === "content/delta" ||
-      m === "agent_message_content_delta" || m === "agent_message_delta") {
+  if (
+    method === "item/agentMessage/delta" ||
+    method === "content/delta" ||
+    m === "agent_message_content_delta" ||
+    m === "agent_message_delta"
+  ) {
     stats.deltasReceived++;
   } else if (m === "collab_agent_spawn_begin") {
     stats.subagentSpawns++;
@@ -236,13 +248,16 @@ async function runNode() {
     lastLagCheck = now;
   }, 100);
 
-  const sessions = new Map<string, {
-    child: ChildProcessWithoutNullStreams;
-    rl: readline.Interface;
-    pending: Map<number, any>;
-    nextId: number;
-    codexThreadId: string | null;
-  }>();
+  const sessions = new Map<
+    string,
+    {
+      child: ChildProcessWithoutNullStreams;
+      rl: readline.Interface;
+      pending: Map<number, any>;
+      nextId: number;
+      codexThreadId: string | null;
+    }
+  >();
 
   // Start N sessions with experimentalApi
   for (let i = 0; i < Math.min(N, SUBAGENT_PROMPTS.length); i++) {
@@ -261,7 +276,13 @@ async function runNode() {
     });
 
     const rl = readline.createInterface({ input: child.stdout });
-    const session = { child, rl, pending: new Map<number, any>(), nextId: 1, codexThreadId: null as string | null };
+    const session = {
+      child,
+      rl,
+      pending: new Map<number, any>(),
+      nextId: 1,
+      codexThreadId: null as string | null,
+    };
     sessions.set(tid, session);
 
     rl.on("line", (line: string) => {
@@ -272,7 +293,11 @@ async function runNode() {
           if (p) {
             session.pending.delete(msg.id);
             if (msg.error) {
-              p.reject(new Error(typeof msg.error === 'object' ? JSON.stringify(msg.error) : String(msg.error)));
+              p.reject(
+                new Error(
+                  typeof msg.error === "object" ? JSON.stringify(msg.error) : String(msg.error),
+                ),
+              );
             } else {
               p.resolve(msg.result);
             }
@@ -284,15 +309,25 @@ async function runNode() {
     });
     child.stderr?.resume();
 
-    const rpc = (method: string, params: any) => new Promise<any>((resolve, reject) => {
-      const id = session.nextId++;
-      const timer = setTimeout(() => { session.pending.delete(id); reject(new Error("timeout")); }, 120000);
-      session.pending.set(id, {
-        resolve: (v: any) => { clearTimeout(timer); resolve(v); },
-        reject: (e: any) => { clearTimeout(timer); reject(e); },
+    const rpc = (method: string, params: any) =>
+      new Promise<any>((resolve, reject) => {
+        const id = session.nextId++;
+        const timer = setTimeout(() => {
+          session.pending.delete(id);
+          reject(new Error("timeout"));
+        }, 120000);
+        session.pending.set(id, {
+          resolve: (v: any) => {
+            clearTimeout(timer);
+            resolve(v);
+          },
+          reject: (e: any) => {
+            clearTimeout(timer);
+            reject(e);
+          },
+        });
+        child.stdin.write(JSON.stringify({ jsonrpc: "2.0", id, method, params }) + "\n");
       });
-      child.stdin.write(JSON.stringify({ jsonrpc: "2.0", id, method, params }) + "\n");
-    });
 
     try {
       // experimentalApi: true enables subagent collaboration
@@ -322,15 +357,25 @@ async function runNode() {
     const session = sessions.get(stats.threadId);
     if (!session || stats.errors.length > 0) continue;
 
-    const rpc = (method: string, params: any) => new Promise<any>((resolve, reject) => {
-      const id = session.nextId++;
-      const timer = setTimeout(() => { session.pending.delete(id); reject(new Error("timeout")); }, 120000);
-      session.pending.set(id, {
-        resolve: (v: any) => { clearTimeout(timer); resolve(v); },
-        reject: (e: any) => { clearTimeout(timer); reject(e); },
+    const rpc = (method: string, params: any) =>
+      new Promise<any>((resolve, reject) => {
+        const id = session.nextId++;
+        const timer = setTimeout(() => {
+          session.pending.delete(id);
+          reject(new Error("timeout"));
+        }, 120000);
+        session.pending.set(id, {
+          resolve: (v: any) => {
+            clearTimeout(timer);
+            resolve(v);
+          },
+          reject: (e: any) => {
+            clearTimeout(timer);
+            reject(e);
+          },
+        });
+        session.child.stdin.write(JSON.stringify({ jsonrpc: "2.0", id, method, params }) + "\n");
       });
-      session.child.stdin.write(JSON.stringify({ jsonrpc: "2.0", id, method, params }) + "\n");
-    });
 
     rpc("turn/start", {
       threadId: session.codexThreadId,
@@ -340,7 +385,8 @@ async function runNode() {
         settings: {
           model: "gpt-5.4",
           reasoning_effort: "high",
-          developer_instructions: "You MUST delegate each service/stage/system to a separate subagent. Do not implement everything yourself — spawn subagents for each module.",
+          developer_instructions:
+            "You MUST delegate each service/stage/system to a separate subagent. Do not implement everything yourself — spawn subagents for each module.",
         },
       },
     }).catch((e) => stats.errors.push(e instanceof Error ? e.message : String(e)));
@@ -355,11 +401,18 @@ async function runNode() {
 
     const mem = process.memoryUsage();
     const totalEvents = allStats.reduce((s, st) => s + st.events.length + st.deltasReceived, 0);
-    timeSeries.push({ elapsed_ms: Date.now() - t0, heapUsed: mem.heapUsed, rss: mem.rss, totalEvents });
+    timeSeries.push({
+      elapsed_ms: Date.now() - t0,
+      heapUsed: mem.heapUsed,
+      rss: mem.rss,
+      totalEvents,
+    });
 
     const spawns = allStats.reduce((s, st) => s + st.subagentSpawns, 0);
     const completed = allStats.filter((s) => s.turnsCompleted > 0).length;
-    process.stdout.write(`\r  ${ts()} events=${totalEvents} spawns=${spawns} completed=${completed}/${allStats.length} heap=${(mem.heapUsed / 1024 / 1024).toFixed(1)}MB`);
+    process.stdout.write(
+      `\r  ${ts()} events=${totalEvents} spawns=${spawns} completed=${completed}/${allStats.length} heap=${(mem.heapUsed / 1024 / 1024).toFixed(1)}MB`,
+    );
 
     if (allStats.every((s) => s.turnsCompleted > 0 || s.errors.length > 0)) {
       log("\nAll sessions completed");
@@ -371,7 +424,9 @@ async function runNode() {
   console.log("");
 
   for (const [, session] of sessions) {
-    try { session.child.kill(); } catch {}
+    try {
+      session.child.kill();
+    } catch {}
   }
 
   return { allStats, timeSeries, lags };
@@ -433,23 +488,28 @@ async function runElixir() {
     }
   }
 
-  log(`${allStats.filter((s) => s.errors.length === 0).length} sessions ready, sending subagent tasks with plan mode...`);
+  log(
+    `${allStats.filter((s) => s.errors.length === 0).length} sessions ready, sending subagent tasks with plan mode...`,
+  );
 
   for (let i = 0; i < allStats.length; i++) {
     const stats = allStats[i]!;
     if (stats.errors.length > 0) continue;
 
-    mgr.sendTurn(stats.threadId, {
-      input: [{ type: "text", text: SUBAGENT_PROMPTS[i]!.prompt }],
-      collaborationMode: {
-        mode: "plan",
-        settings: {
-          model: "gpt-5.4",
-          reasoning_effort: "high",
-          developer_instructions: "You MUST delegate each service/stage/system to a separate subagent. Do not implement everything yourself — spawn subagents for each module.",
+    mgr
+      .sendTurn(stats.threadId, {
+        input: [{ type: "text", text: SUBAGENT_PROMPTS[i]!.prompt }],
+        collaborationMode: {
+          mode: "plan",
+          settings: {
+            model: "gpt-5.4",
+            reasoning_effort: "high",
+            developer_instructions:
+              "You MUST delegate each service/stage/system to a separate subagent. Do not implement everything yourself — spawn subagents for each module.",
+          },
         },
-      },
-    }).catch((e: any) => stats.errors.push(e instanceof Error ? e.message : String(e)));
+      })
+      .catch((e: any) => stats.errors.push(e instanceof Error ? e.message : String(e)));
   }
 
   log("All tasks sent with plan mode (gpt-5.4). Monitoring...\n");
@@ -459,7 +519,7 @@ async function runElixir() {
     await sleep(METRICS_INTERVAL_MS);
 
     try {
-      const m = await fetch(METRICS_URL).then((r) => r.json()) as any;
+      const m = (await fetch(METRICS_URL).then((r) => r.json())) as any;
       const totalEvents = allStats.reduce((s, st) => s + st.events.length + st.deltasReceived, 0);
       timeSeries.push({
         elapsed_ms: Date.now() - t0,
@@ -470,7 +530,9 @@ async function runElixir() {
 
       const spawns = allStats.reduce((s, st) => s + st.subagentSpawns, 0);
       const completed = allStats.filter((s) => s.turnsCompleted > 0).length;
-      process.stdout.write(`\r  ${ts()} events=${totalEvents} spawns=${spawns} completed=${completed}/${allStats.length} mem=${(m.beam.total_memory / 1024 / 1024).toFixed(1)}MB procs=${m.beam.process_count}`);
+      process.stdout.write(
+        `\r  ${ts()} events=${totalEvents} spawns=${spawns} completed=${completed}/${allStats.length} mem=${(m.beam.total_memory / 1024 / 1024).toFixed(1)}MB procs=${m.beam.process_count}`,
+      );
     } catch {}
 
     if (allStats.every((s) => s.turnsCompleted > 0 || s.errors.length > 0)) {
@@ -480,7 +542,9 @@ async function runElixir() {
   }
 
   console.log("");
-  try { await mgr.stopAll(); } catch {}
+  try {
+    await mgr.stopAll();
+  } catch {}
   mgr.disconnect();
 
   return { allStats, timeSeries, lags: [] as number[] };
@@ -494,7 +558,9 @@ async function main() {
   const sessionCount = Math.min(N, SUBAGENT_PROMPTS.length);
   console.log("\n" + "╔" + "═".repeat(58) + "╗");
   console.log("║" + `  REAL Subagent Stress Test — ${RUNTIME}`.padEnd(58) + "║");
-  console.log("║" + `  ${sessionCount} Codex sessions with experimentalApi + plan mode`.padEnd(58) + "║");
+  console.log(
+    "║" + `  ${sessionCount} Codex sessions with experimentalApi + plan mode`.padEnd(58) + "║",
+  );
   console.log("║" + `  Each task designed to trigger subagent delegation`.padEnd(58) + "║");
   console.log("║" + `  Max duration: ${TEST_DURATION_MS / 1000 / 60} minutes`.padEnd(58) + "║");
   console.log("╚" + "═".repeat(58) + "╝\n");
@@ -511,11 +577,17 @@ async function main() {
   console.log("═".repeat(70));
 
   for (const stats of allStats) {
-    const duration = stats.lastEventAt && stats.firstEventAt
-      ? ((stats.lastEventAt - stats.firstEventAt) / 1000).toFixed(0) : "?";
+    const duration =
+      stats.lastEventAt && stats.firstEventAt
+        ? ((stats.lastEventAt - stats.firstEventAt) / 1000).toFixed(0)
+        : "?";
     console.log(`\n  [${stats.name}]`);
-    console.log(`    Events: ${stats.events.length + stats.deltasReceived} total (${stats.deltasReceived} deltas)`);
-    console.log(`    Subagents: ${stats.subagentSpawns} spawned, ${stats.subagentCompletions} completed`);
+    console.log(
+      `    Events: ${stats.events.length + stats.deltasReceived} total (${stats.deltasReceived} deltas)`,
+    );
+    console.log(
+      `    Subagents: ${stats.subagentSpawns} spawned, ${stats.subagentCompletions} completed`,
+    );
     console.log(`    Interactions: ${stats.interactionBegins} begin, ${stats.interactionEnds} end`);
     console.log(`    Collab waiting: ${stats.collabWaiting}`);
     console.log(`    Tool calls: ${stats.toolCalls}`);
@@ -525,16 +597,25 @@ async function main() {
     if (stats.errors.length > 0) console.log(`    ERRORS: ${stats.errors.join(", ")}`);
 
     // Show subagent lifecycle events
-    const subagentEvents = stats.events.filter((e) =>
-      e.method.includes("collab") || e.method.includes("spawn") || e.method.includes("interaction"));
+    const subagentEvents = stats.events.filter(
+      (e) =>
+        e.method.includes("collab") ||
+        e.method.includes("spawn") ||
+        e.method.includes("interaction"),
+    );
     if (subagentEvents.length > 0) {
       console.log(`    Subagent event timeline:`);
       for (const e of subagentEvents.slice(0, 20)) {
         const t = ((e.timestamp - (stats.firstEventAt ?? e.timestamp)) / 1000).toFixed(1);
-        const agent = e.agentName ? ` [${e.agentName}]` : e.agentId ? ` [${e.agentId.slice(0, 8)}]` : "";
+        const agent = e.agentName
+          ? ` [${e.agentName}]`
+          : e.agentId
+            ? ` [${e.agentId.slice(0, 8)}]`
+            : "";
         console.log(`      +${t}s ${e.method}${agent}`);
       }
-      if (subagentEvents.length > 20) console.log(`      ... and ${subagentEvents.length - 20} more`);
+      if (subagentEvents.length > 20)
+        console.log(`      ... and ${subagentEvents.length - 20} more`);
     }
   }
 
@@ -550,7 +631,9 @@ async function main() {
   console.log(`    Total subagent completions: ${totalCompletions}`);
   console.log(`    Total events: ${totalEvents}`);
   console.log(`    Duration: ${duration.toFixed(0)}s`);
-  console.log(`    Subagents triggered: ${totalSpawns > 0 ? "YES" : "NO — Codex handled as single agent"}`);
+  console.log(
+    `    Subagents triggered: ${totalSpawns > 0 ? "YES" : "NO — Codex handled as single agent"}`,
+  );
 
   if (totalSpawns === 0) {
     console.log(`\n  NOTE: Codex did not spawn subagents. This can happen if:`);
@@ -589,10 +672,14 @@ async function main() {
       totalToolCalls: allStats.reduce((s, st) => s + st.toolCalls, 0),
       totalDeltasReceived: allStats.reduce((s, st) => s + st.deltasReceived, 0),
       subagentsTriggered: totalSpawns > 0,
-      ...(RUNTIME === "node" && lags.length > 0 ? {
-        lagP50_ms: Math.round([...lags].sort((a, b) => a - b)[Math.floor(lags.length * 0.5)] * 10) / 10,
-        lagP99_ms: Math.round([...lags].sort((a, b) => a - b)[Math.floor(lags.length * 0.99)] * 10) / 10,
-      } : {}),
+      ...(RUNTIME === "node" && lags.length > 0
+        ? {
+            lagP50_ms:
+              Math.round([...lags].sort((a, b) => a - b)[Math.floor(lags.length * 0.5)] * 10) / 10,
+            lagP99_ms:
+              Math.round([...lags].sort((a, b) => a - b)[Math.floor(lags.length * 0.99)] * 10) / 10,
+          }
+        : {}),
     },
   };
 

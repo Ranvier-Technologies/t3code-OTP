@@ -118,7 +118,7 @@ function toSessionError(
   cause: unknown,
 ): ProviderAdapterSessionNotFoundError | ProviderAdapterSessionClosedError | undefined {
   const normalized = toMessage(cause, "").toLowerCase();
-  if (normalized.includes("unknown session") || normalized.includes("unknown provider session")) {
+  if (normalized.includes("unknown session") || normalized.includes("unknown provider session") || normalized.includes("session not found")) {
     return new ProviderAdapterSessionNotFoundError({
       provider: DEFAULT_PROVIDER,
       threadId,

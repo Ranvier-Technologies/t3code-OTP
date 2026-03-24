@@ -51,6 +51,7 @@ const withDefaults =
 export const AppSettingsSchema = Schema.Struct({
   codexBinaryPath: Schema.String.check(Schema.isMaxLength(4096)).pipe(withDefaults(() => "")),
   codexHomePath: Schema.String.check(Schema.isMaxLength(4096)).pipe(withDefaults(() => "")),
+  claudeBinaryPath: Schema.String.check(Schema.isMaxLength(4096)).pipe(withDefaults(() => "")),
   defaultThreadEnvMode: EnvMode.pipe(withDefaults(() => "local" as const satisfies EnvMode)),
   confirmThreadDelete: Schema.Boolean.pipe(withDefaults(() => true)),
   enableAssistantStreaming: Schema.Boolean.pipe(withDefaults(() => false)),
@@ -67,7 +68,7 @@ export interface AppModelOption {
 }
 
 const DEFAULT_APP_SETTINGS = AppSettingsSchema.makeUnsafe({});
-const PROVIDER_CUSTOM_MODEL_CONFIG: Record<ProviderKind, ProviderCustomModelConfig> = {
+const PROVIDER_CUSTOM_MODEL_CONFIG: Partial<Record<ProviderKind, ProviderCustomModelConfig>> = {
   codex: {
     provider: "codex",
     settingsKey: "customCodexModels",
@@ -219,10 +220,10 @@ export function getAppModelOptions(
 
 export function resolveAppModelSelection(
   provider: ProviderKind,
-  customModels: Record<ProviderKind, readonly string[]>,
+  customModels: Partial<Record<ProviderKind, readonly string[]>>,
   selectedModel: string | null | undefined,
 ): string {
-  const customModelsForProvider = customModels[provider];
+  const customModelsForProvider = customModels[provider] ?? [];
   const options = getAppModelOptions(provider, customModelsForProvider, selectedModel);
   return resolveSelectableModel(provider, selectedModel, options) ?? getDefaultModel(provider);
 }
@@ -249,8 +250,12 @@ export function getCustomModelOptionsByProvider(
     if (newDiscovered.length === 0) return builtInAndCustom;
 
     // Insert discovered models after built-in, before custom
-    const builtIn = builtInAndCustom.filter((m) => !("isCustom" in m && (m as AppModelOption).isCustom));
-    const custom = builtInAndCustom.filter((m) => "isCustom" in m && (m as AppModelOption).isCustom);
+    const builtIn = builtInAndCustom.filter(
+      (m) => !("isCustom" in m && (m as AppModelOption).isCustom),
+    );
+    const custom = builtInAndCustom.filter(
+      (m) => "isCustom" in m && (m as AppModelOption).isCustom,
+    );
     return [...builtIn, ...newDiscovered, ...custom];
   };
 

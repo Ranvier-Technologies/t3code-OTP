@@ -120,7 +120,7 @@ defmodule Harness.Providers.MockSession do
     case Map.pop(state.pending, id) do
       {nil, _} -> {:noreply, state}
       {%{from: from}, pending} ->
-        GenServer.reply(from, {:error, "Request timeout"})
+        if from, do: GenServer.reply(from, {:error, "Request timeout"})
         {:noreply, %{state | pending: pending}}
     end
   end

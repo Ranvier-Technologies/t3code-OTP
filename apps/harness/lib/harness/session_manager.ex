@@ -19,24 +19,20 @@ defmodule Harness.SessionManager do
   Start a new provider session.
   """
   def start_session(params) do
-    thread_id = Map.fetch!(params, "threadId")
-    provider = Map.get(params, "provider", "codex")
+    case Map.get(params, "threadId") do
+      nil ->
+        {:error, "Missing required param: threadId"}
 
-    case provider_module(provider) do
-      {:error, reason} ->
-        {:error, reason}
+      thread_id ->
+        provider = Map.get(params, "provider", "codex")
 
-      {:ok, session_module} ->
-        # Emit connecting event only after validating provider
-        SnapshotServer.apply_event(Event.new(%{
-          thread_id: thread_id,
-          provider: provider,
-          kind: :session,
-          method: "session/connecting",
-          payload: params
-        }))
+        case provider_module(provider) do
+          {:error, reason} ->
+            {:error, reason}
 
-        start_session_with_module(session_module, thread_id, provider, params)
+          {:ok, session_module} ->
+            start_session_with_module(session_module, thread_id, provider, params)
+        end
     end
   end
 
@@ -50,6 +46,14 @@ defmodule Harness.SessionManager do
 
     case DynamicSupervisor.start_child(Harness.SessionSupervisor, child_spec) do
       {:ok, pid} ->
+        # Emit connecting only for genuinely new sessions
+        SnapshotServer.apply_event(Event.new(%{
+          thread_id: thread_id,
+          provider: provider,
+          kind: :session,
+          method: "session/connecting",
+          payload: params
+        }))
         # Block until the GenServer reaches ready state (or timeout after 60s).
         # OpenCode's server takes ~20s to start; 30s was too tight.
         try do

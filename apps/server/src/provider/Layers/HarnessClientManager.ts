@@ -149,11 +149,7 @@ export class HarnessClientManager {
     });
   }
 
-  async respondToApproval(
-    threadId: string,
-    requestId: string,
-    decision: string,
-  ): Promise<void> {
+  async respondToApproval(threadId: string, requestId: string, decision: string): Promise<void> {
     await this.push("session.respondToApproval", {
       threadId,
       requestId,
@@ -190,7 +186,11 @@ export class HarnessClientManager {
     if (Array.isArray(result)) {
       return result;
     }
-    if (result && typeof result === "object" && Array.isArray((result as Record<string, unknown>).sessions)) {
+    if (
+      result &&
+      typeof result === "object" &&
+      Array.isArray((result as Record<string, unknown>).sessions)
+    ) {
       return (result as Record<string, unknown>).sessions as unknown[];
     }
     return [];
@@ -199,10 +199,13 @@ export class HarnessClientManager {
   async listProviderModels(provider: string): Promise<Array<{ slug: string; name: string }>> {
     try {
       const result = await this.push("provider.listModels", { provider });
-      const models = (result && typeof result === "object" && Array.isArray((result as Record<string, unknown>).models))
-        ? (result as Record<string, unknown>).models as Array<{ slug: string; name: string }>
-        : [];
-      return models.filter(m => typeof m.slug === "string" && typeof m.name === "string");
+      const models =
+        result &&
+        typeof result === "object" &&
+        Array.isArray((result as Record<string, unknown>).models)
+          ? ((result as Record<string, unknown>).models as Array<{ slug: string; name: string }>)
+          : [];
+      return models.filter((m) => typeof m.slug === "string" && typeof m.name === "string");
     } catch {
       return [];
     }
@@ -332,7 +335,8 @@ export class HarnessClientManager {
         afterSeq: this.lastSeenSeq,
       });
 
-      const events = (result as Record<string, unknown>).events;
+      const resultObj = result as Record<string, unknown>;
+      const events = resultObj.events;
       if (Array.isArray(events)) {
         for (const eventMap of events) {
           const rawEvent = this.parseRawEvent(eventMap as Record<string, unknown>);
@@ -345,9 +349,16 @@ export class HarnessClientManager {
           }
         }
       }
-    } catch {
-      // Replay failed — the gap may be too large (events evicted from WAL).
-      // The client should do a full snapshot sync instead.
+    } catch (err) {
+      // Replay failed — likely a WAL gap (events evicted from ring buffer).
+      // Reset lastSeenSeq so future reconnects don't attempt partial replay
+      // against a stale sequence number. The next full event stream will
+      // rebuild state from the live harness.
+      this.lastSeenSeq = 0;
+      console.warn(
+        "[HarnessClientManager] Event replay failed (WAL gap), reset to full sync",
+        err instanceof Error ? err.message : err,
+      );
     }
   }
 
@@ -473,8 +484,11 @@ export class HarnessClientManager {
 
     if (event === "session.changed" || event === "harness.session.changed") {
       const threadId =
-        typeof payload.threadId === "string" ? payload.threadId :
-        typeof payload.thread_id === "string" ? payload.thread_id : "";
+        typeof payload.threadId === "string"
+          ? payload.threadId
+          : typeof payload.thread_id === "string"
+            ? payload.thread_id
+            : "";
       if (threadId) {
         this.options.onSessionChanged({ threadId, session: payload.session ?? null });
       }
@@ -486,15 +500,24 @@ export class HarnessClientManager {
     // Elixir sends camelCase keys (eventId, threadId, createdAt).
     // Accept both snake_case and camelCase for robustness.
     const eventId =
-      typeof payload.eventId === "string" ? payload.eventId :
-      typeof payload.event_id === "string" ? payload.event_id : "";
+      typeof payload.eventId === "string"
+        ? payload.eventId
+        : typeof payload.event_id === "string"
+          ? payload.event_id
+          : "";
     const threadId =
-      typeof payload.threadId === "string" ? payload.threadId :
-      typeof payload.thread_id === "string" ? payload.thread_id : "";
+      typeof payload.threadId === "string"
+        ? payload.threadId
+        : typeof payload.thread_id === "string"
+          ? payload.thread_id
+          : "";
     const provider = typeof payload.provider === "string" ? payload.provider : "harness";
     const createdAt =
-      typeof payload.createdAt === "string" ? payload.createdAt :
-      typeof payload.created_at === "string" ? payload.created_at : new Date().toISOString();
+      typeof payload.createdAt === "string"
+        ? payload.createdAt
+        : typeof payload.created_at === "string"
+          ? payload.created_at
+          : new Date().toISOString();
     const kind = typeof payload.kind === "string" ? payload.kind : "notification";
     const method = typeof payload.method === "string" ? payload.method : "";
 
@@ -547,7 +570,11 @@ export class HarnessClientManager {
       const timer = setTimeout(() => {
         if (this.pending.has(ref)) {
           this.pending.delete(ref);
-          reject(new Error(`HarnessClientManager: request ref='${ref}' timed out after ${REQUEST_TIMEOUT_MS}ms`));
+          reject(
+            new Error(
+              `HarnessClientManager: request ref='${ref}' timed out after ${REQUEST_TIMEOUT_MS}ms`,
+            ),
+          );
         }
       }, REQUEST_TIMEOUT_MS);
 

@@ -83,8 +83,12 @@ function analyzeScaling(data: Record<string, unknown>): string {
       );
     }
     lines.push("");
-    lines.push("> **Key finding**: Elixir can attribute memory to individual sessions via per-process heaps.");
-    lines.push("> Node's shared V8 heap makes this impossible — you can only see aggregate `heapUsed`.");
+    lines.push(
+      "> **Key finding**: Elixir can attribute memory to individual sessions via per-process heaps.",
+    );
+    lines.push(
+      "> Node's shared V8 heap makes this impossible — you can only see aggregate `heapUsed`.",
+    );
   }
 
   // Session outcomes
@@ -94,7 +98,9 @@ function analyzeScaling(data: Record<string, unknown>): string {
     lines.push("### Session Errors");
     lines.push("");
     for (const s of errored) {
-      lines.push(`- **${(s.provider as string)}** (${(s.threadId as string)?.slice(0, 20)}): ${(s.errors as string[]).join(", ")}`);
+      lines.push(
+        `- **${s.provider as string}** (${(s.threadId as string)?.slice(0, 20)}): ${(s.errors as string[]).join(", ")}`,
+      );
     }
   }
 
@@ -173,9 +179,7 @@ function analyzeCrashChurn(data: Record<string, unknown>): string {
       "> Memory and BEAM processes were reclaimed promptly after kills.",
     );
   } else {
-    lines.push(
-      "> **Concern**: Cascading failures detected after kills:",
-    );
+    lines.push("> **Concern**: Cascading failures detected after kills:");
     const msgs = summary.survivorErrorMessages as string[];
     for (const msg of msgs) {
       lines.push(`>   - ${msg}`);
@@ -243,7 +247,10 @@ function analyzeSnapshotBottleneck(data: Record<string, unknown>): string {
 // Main
 // ---------------------------------------------------------------------------
 
-function compareGcLab(elixirLab: Record<string, unknown>, nodeLab: Record<string, unknown>): string {
+function compareGcLab(
+  elixirLab: Record<string, unknown>,
+  nodeLab: Record<string, unknown>,
+): string {
   const es = elixirLab.summary as Record<string, unknown>;
   const ns = nodeLab.summary as Record<string, unknown>;
 
@@ -486,20 +493,24 @@ function main() {
       `| Throughput | ${nw.eventsPerSecond} events/s | ${ew.eventsPerSecond} events/s |`,
       `| Apps completed (5 min) | ${nw.completed}/${nw.sessionCount} | ${ew.completed}/${ew.sessionCount} |`,
       `| Heap/memory range | **${formatBytes(Math.min(...nodeHeaps))} – ${formatBytes(Math.max(...nodeHeaps))}** | **${formatBytes(Math.min(...elixirMems))} – ${formatBytes(Math.max(...elixirMems))}** |`,
-      ...(nw.lagP99_ms != null ? [`| Event loop lag p99 | **${nw.lagP99_ms}ms** | N/A (per-scheduler) |`] : []),
-      ...(nw.lagMax_ms != null ? [`| Event loop lag max | **${nw.lagMax_ms}ms** | N/A (per-scheduler) |`] : []),
+      ...(nw.lagP99_ms != null
+        ? [`| Event loop lag p99 | **${nw.lagP99_ms}ms** | N/A (per-scheduler) |`]
+        : []),
+      ...(nw.lagMax_ms != null
+        ? [`| Event loop lag max | **${nw.lagMax_ms}ms** | N/A (per-scheduler) |`]
+        : []),
       "",
       "### Memory Behavior",
       "",
       nodeHeaps.length > 0
         ? `- **Node**: Heap oscillated ${formatBytes(Math.min(...nodeHeaps))} – ${formatBytes(Math.max(...nodeHeaps))} ` +
-          `(${Math.round(Math.max(...nodeHeaps) / Math.min(...nodeHeaps))}x range). ` +
-          "GC sawtooth pattern — aggressive mark-sweep cycles visible as heap drops from peak to floor."
+            `(${Math.round(Math.max(...nodeHeaps) / Math.min(...nodeHeaps))}x range). ` +
+            "GC sawtooth pattern — aggressive mark-sweep cycles visible as heap drops from peak to floor."
         : "",
       elixirMems.length > 0
         ? `- **Elixir**: Memory stayed within ${formatBytes(Math.min(...elixirMems))} – ${formatBytes(Math.max(...elixirMems))} ` +
-          `(${((Math.max(...elixirMems) - Math.min(...elixirMems)) / 1024 / 1024).toFixed(1)}MB band). ` +
-          "Flat line — each GenServer GCs independently, no system-wide pauses."
+            `(${((Math.max(...elixirMems) - Math.min(...elixirMems)) / 1024 / 1024).toFixed(1)}MB band). ` +
+            "Flat line — each GenServer GCs independently, no system-wide pauses."
         : "",
       "",
       "> **This is the definitive result.** Under real tool-use workloads with 5 concurrent",
@@ -559,8 +570,12 @@ function main() {
       `| Leaky deltas | ${ns.leakyDeltaCount} | ${es.leakyDeltaCount} |`,
       `| Leaky payload | ${ns.leakyPayloadMb}MB | ${es.leakyPayloadMb}MB |`,
       `| Healthy turns completed | ${(ns.healthyTurnsCompleted as number[]).join(", ")} | ${(es.healthyTurnsCompleted as number[]).join(", ")} |`,
-      ...(ns.heapGrowthMb != null ? [`| Heap growth (shared) | **+${ns.heapGrowthMb}MB** | N/A (per-process) |`] : []),
-      ...(ns.leakedObjectCount != null ? [`| Leaked objects retained | **${ns.leakedObjectCount}** | N/A (per-process GC) |`] : []),
+      ...(ns.heapGrowthMb != null
+        ? [`| Heap growth (shared) | **+${ns.heapGrowthMb}MB** | N/A (per-process) |`]
+        : []),
+      ...(ns.leakedObjectCount != null
+        ? [`| Leaked objects retained | **${ns.leakedObjectCount}** | N/A (per-process GC) |`]
+        : []),
       ...(ns.lagP99_ms != null ? [`| Event loop lag p99 | **${ns.lagP99_ms}ms** | N/A |`] : []),
       "",
     );
@@ -568,21 +583,29 @@ function main() {
     if (ets.length > 0) {
       const firstE = ets[0] as Record<string, unknown>;
       const lastE = ets[ets.length - 1] as Record<string, unknown>;
-      const leakGrowth = firstE.leakyProcessMemory && lastE.leakyProcessMemory
-        ? ((lastE.leakyProcessMemory as number) - (firstE.leakyProcessMemory as number)) / 1024
-        : null;
-      const healthyDelta = firstE.healthyAvgMemory && lastE.healthyAvgMemory
-        ? ((lastE.healthyAvgMemory as number) - (firstE.healthyAvgMemory as number)) / 1024
-        : null;
+      const leakGrowth =
+        firstE.leakyProcessMemory && lastE.leakyProcessMemory
+          ? ((lastE.leakyProcessMemory as number) - (firstE.leakyProcessMemory as number)) / 1024
+          : null;
+      const healthyDelta =
+        firstE.healthyAvgMemory && lastE.healthyAvgMemory
+          ? ((lastE.healthyAvgMemory as number) - (firstE.healthyAvgMemory as number)) / 1024
+          : null;
 
-      if (leakGrowth != null) sections.push(`Elixir leaky process memory change: ${leakGrowth.toFixed(0)}KB`);
-      if (healthyDelta != null) sections.push(`Elixir healthy avg memory change: ${healthyDelta.toFixed(0)}KB`);
+      if (leakGrowth != null)
+        sections.push(`Elixir leaky process memory change: ${leakGrowth.toFixed(0)}KB`);
+      if (healthyDelta != null)
+        sections.push(`Elixir healthy avg memory change: ${healthyDelta.toFixed(0)}KB`);
       sections.push("");
     }
 
     sections.push(
-      "> **Critical finding**: Node's shared heap grew by " + (ns.heapGrowthMb ?? "?") + "MB due to the leak,",
-      "> with event loop lag spiking to " + (ns.lagP99_ms ?? "?") + "ms p99. All sessions share this degradation.",
+      "> **Critical finding**: Node's shared heap grew by " +
+        (ns.heapGrowthMb ?? "?") +
+        "MB due to the leak,",
+      "> with event loop lag spiking to " +
+        (ns.lagP99_ms ?? "?") +
+        "ms p99. All sessions share this degradation.",
       "> Elixir's per-process GC keeps the leak isolated — healthy sessions' memory stays flat.",
       "",
     );
@@ -606,7 +629,9 @@ function main() {
       `| Startup time | ${(ns.startupDuration_s as number).toFixed(1)}s | ${(es.startupDuration_s as number).toFixed(1)}s |`,
       `| Events/s | ${ns.eventsPerSecond} | ${es.eventsPerSecond} |`,
       `| Fairness (stddev) | ${ns.fairnessStddev} | ${es.fairnessStddev} |`,
-      ...(ns.lagP99_ms != null ? [`| Event loop lag p99 | **${ns.lagP99_ms}ms** | N/A (per-scheduler) |`] : []),
+      ...(ns.lagP99_ms != null
+        ? [`| Event loop lag p99 | **${ns.lagP99_ms}ms** | N/A (per-scheduler) |`]
+        : []),
       "",
       "> **Both handle 50 sessions.** Throughput is comparable. Node shows event loop lag",
       "> at this scale which would affect UI responsiveness in Electron.",
@@ -681,7 +706,8 @@ function main() {
   if (gcContam) console.log("  ✓ Test B: GC Cross-Contamination");
   if (crashChurn) console.log("  ✓ Test C: Crash Churn");
   if (snapBottle) console.log("  ✓ Test D: SnapshotServer Bottleneck");
-  if (elixirGcLab && nodeGcLab) console.log("  ✓ GC Lab: Controlled Cross-Contamination (Elixir vs Node)");
+  if (elixirGcLab && nodeGcLab)
+    console.log("  ✓ GC Lab: Controlled Cross-Contamination (Elixir vs Node)");
   if (elixirSubagent && nodeSubagent) console.log("  ✓ GAP 1: Subagent Tree Stress Test");
   if (elixirLeak && nodeLeak) console.log("  ✓ GAP 2: Memory Leak Simulation");
   if (elixirScale50 && nodeScale50) console.log("  ✓ GAP 3: 50-Session Scale Test");

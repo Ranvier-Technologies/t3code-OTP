@@ -112,7 +112,8 @@ defmodule Harness.Providers.ClaudeSession do
   # Port data received (stdout from claude process)
   @impl true
   def handle_info({port, {:data, {:eol, line}}}, %{port: port} = state) do
-    state = process_line(to_string(line), state)
+    full_line = state.buffer <> to_string(line)
+    state = process_line(full_line, %{state | buffer: ""})
     {:noreply, state}
   end
 

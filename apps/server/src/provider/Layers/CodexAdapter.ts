@@ -6,11 +6,7 @@
  *
  * @module CodexAdapterLive
  */
-import {
-  type ProviderEvent,
-  type ProviderRuntimeEvent,
-  ThreadId,
-} from "@t3tools/contracts";
+import { type ProviderEvent, type ProviderRuntimeEvent, ThreadId } from "@t3tools/contracts";
 import { Effect, FileSystem, Layer, Queue, ServiceMap, Stream } from "effect";
 import { mapToRuntimeEvents } from "./codexEventMapping.ts";
 

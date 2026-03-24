@@ -74,7 +74,10 @@ interface CodexSession {
   rl: readline.Interface;
   codexThreadId: string | null;
   nextRequestId: number;
-  pending: Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void; method: string }>;
+  pending: Map<
+    number,
+    { resolve: (v: unknown) => void; reject: (e: Error) => void; method: string }
+  >;
   ready: boolean;
   onNotification: (method: string, params: Record<string, unknown>) => void;
 }
@@ -172,7 +175,11 @@ function createSessionState(threadId: string, provider: string): SessionState {
 
 const activeSessions = new Map<string, CodexSession>();
 
-function sendRpc(session: CodexSession, method: string, params: Record<string, unknown>): Promise<unknown> {
+function sendRpc(
+  session: CodexSession,
+  method: string,
+  params: Record<string, unknown>,
+): Promise<unknown> {
   return new Promise((resolve, reject) => {
     const id = session.nextRequestId++;
     const msg = JSON.stringify({ jsonrpc: "2.0", id, method, params });
@@ -185,8 +192,14 @@ function sendRpc(session: CodexSession, method: string, params: Record<string, u
     }, 60_000);
 
     session.pending.set(id, {
-      resolve: (v) => { clearTimeout(timer); resolve(v); },
-      reject: (e) => { clearTimeout(timer); reject(e); },
+      resolve: (v) => {
+        clearTimeout(timer);
+        resolve(v);
+      },
+      reject: (e) => {
+        clearTimeout(timer);
+        reject(e);
+      },
       method,
     });
 
@@ -194,7 +207,11 @@ function sendRpc(session: CodexSession, method: string, params: Record<string, u
   });
 }
 
-function sendNotification(session: CodexSession, method: string, params?: Record<string, unknown>): void {
+function sendNotification(
+  session: CodexSession,
+  method: string,
+  params?: Record<string, unknown>,
+): void {
   const msg = JSON.stringify({ jsonrpc: "2.0", method, params: params ?? {} });
   session.child.stdin.write(msg + "\n");
 }
@@ -274,11 +291,11 @@ async function startCodexSession(
   sendNotification(session, "initialized");
 
   // Start thread
-  const threadResult = await sendRpc(session, "thread/start", {
+  const threadResult = (await sendRpc(session, "thread/start", {
     cwd: CWD,
     approvalPolicy: "never",
     sandbox: "danger-full-access",
-  }) as Record<string, unknown>;
+  })) as Record<string, unknown>;
 
   const thread = threadResult.thread as Record<string, unknown> | undefined;
   session.codexThreadId = (thread?.id as string) ?? null;
@@ -298,7 +315,9 @@ async function sendTurn(session: CodexSession, prompt: string): Promise<unknown>
 function killSession(threadId: string): void {
   const session = activeSessions.get(threadId);
   if (session) {
-    try { session.child.kill(); } catch {}
+    try {
+      session.child.kill();
+    } catch {}
     activeSessions.delete(threadId);
   }
 }
@@ -365,7 +384,9 @@ async function testA(): Promise<TestResult> {
   }
 
   allMetrics.push(collectNodeMetrics(activeSessions.size));
-  log(`After starting ${activeSessions.size} sessions: heap=${(allMetrics[allMetrics.length - 1]!.memory.heapUsed / 1024 / 1024).toFixed(1)}MB`);
+  log(
+    `After starting ${activeSessions.size} sessions: heap=${(allMetrics[allMetrics.length - 1]!.memory.heapUsed / 1024 / 1024).toFixed(1)}MB`,
+  );
 
   // Send 3 turns to each
   for (let turn = 0; turn < 3; turn++) {
@@ -408,7 +429,9 @@ async function testA(): Promise<TestResult> {
   killAllSessions();
   await sleep(5000);
   // Force GC if available
-  try { global.gc?.(); } catch {}
+  try {
+    global.gc?.();
+  } catch {}
   await sleep(2000);
   const afterCleanup = collectNodeMetrics(0);
   allMetrics.push(afterCleanup);
@@ -433,10 +456,8 @@ async function testA(): Promise<TestResult> {
       peakRss: Math.max(...allMetrics.map((m) => m.memory.rss)),
       perSessionMemory: "NOT AVAILABLE — shared V8 heap (this is the structural gap)",
       avgLatency_ms:
-        [...states.values()]
-          .flatMap((s) => s.latencies)
-          .reduce((a, b) => a + b, 0) /
-          Math.max(1, [...states.values()].flatMap((s) => s.latencies).length),
+        [...states.values()].flatMap((s) => s.latencies).reduce((a, b) => a + b, 0) /
+        Math.max(1, [...states.values()].flatMap((s) => s.latencies).length),
     },
   };
 
@@ -466,38 +487,54 @@ async function testB(): Promise<TestResult> {
   const stateB = states.get(tidB)!;
 
   // Latency measurement helper
-  const turnTimings = new Map<string, { sentAt: number; resolver: ((lat: number) => void) | null }>();
+  const turnTimings = new Map<
+    string,
+    { sentAt: number; resolver: ((lat: number) => void) | null }
+  >();
 
-  const makeHandler = (state: SessionState, tid: string) => (method: string, params: Record<string, unknown>) => {
-    if (method === "turn/started") state.turnStartedAt = Date.now();
-    if (method === "item/agentMessage/delta") {
-      const now = Date.now();
-      state.deltasReceived++;
-      if (state.firstDeltaAt === null) {
-        state.firstDeltaAt = now;
-        if (state.turnStartedAt) state.latencies.push(now - state.turnStartedAt);
-      }
-      state.text += String((params as any).delta ?? "");
+  const makeHandler =
+    (state: SessionState, tid: string) => (method: string, params: Record<string, unknown>) => {
+      if (method === "turn/started") state.turnStartedAt = Date.now();
+      if (method === "item/agentMessage/delta") {
+        const now = Date.now();
+        state.deltasReceived++;
+        if (state.firstDeltaAt === null) {
+          state.firstDeltaAt = now;
+          if (state.turnStartedAt) state.latencies.push(now - state.turnStartedAt);
+        }
+        state.text += String((params as any).delta ?? "");
 
-      const timing = turnTimings.get(tid);
-      if (timing?.resolver) {
-        timing.resolver(now - timing.sentAt);
-        timing.resolver = null;
+        const timing = turnTimings.get(tid);
+        if (timing?.resolver) {
+          timing.resolver(now - timing.sentAt);
+          timing.resolver = null;
+        }
       }
-    }
-    if (method === "turn/completed") {
-      state.turnsCompleted++;
-      state.turnCompletedAt = Date.now();
-      state.firstDeltaAt = null;
-      state.turnStartedAt = null;
-    }
-  };
+      if (method === "turn/completed") {
+        state.turnsCompleted++;
+        state.turnCompletedAt = Date.now();
+        state.firstDeltaAt = null;
+        state.turnStartedAt = null;
+      }
+    };
 
   function measureTurnLatency(session: CodexSession, tid: string, prompt: string): Promise<number> {
     return new Promise<number>((resolve) => {
-      const timer = setTimeout(() => { turnTimings.delete(tid); resolve(-1); }, 60_000);
-      turnTimings.set(tid, { sentAt: Date.now(), resolver: (lat) => { clearTimeout(timer); resolve(lat); } });
-      sendTurn(session, prompt).catch(() => { clearTimeout(timer); resolve(-1); });
+      const timer = setTimeout(() => {
+        turnTimings.delete(tid);
+        resolve(-1);
+      }, 60_000);
+      turnTimings.set(tid, {
+        sentAt: Date.now(),
+        resolver: (lat) => {
+          clearTimeout(timer);
+          resolve(lat);
+        },
+      });
+      sendTurn(session, prompt).catch(() => {
+        clearTimeout(timer);
+        resolve(-1);
+      });
     });
   }
 
@@ -508,7 +545,11 @@ async function testB(): Promise<TestResult> {
 
   const baselineLatencies: number[] = [];
   for (let i = 0; i < 3; i++) {
-    const lat = await measureTurnLatency(sessionB, tidB, "Say hello in exactly one word. Do not use tools.");
+    const lat = await measureTurnLatency(
+      sessionB,
+      tidB,
+      "Say hello in exactly one word. Do not use tools.",
+    );
     if (lat > 0) baselineLatencies.push(lat);
     log(`  Baseline turn ${i + 1}: ${lat}ms`);
     const end = Date.now() + 60_000;
@@ -536,7 +577,11 @@ async function testB(): Promise<TestResult> {
   const concurrentLatencies: number[] = [];
   for (let i = 0; i < 3; i++) {
     const turnsBefore = stateB.turnsCompleted;
-    const lat = await measureTurnLatency(sessionB, tidB, "Say hello in exactly one word. Do not use tools.");
+    const lat = await measureTurnLatency(
+      sessionB,
+      tidB,
+      "Say hello in exactly one word. Do not use tools.",
+    );
     if (lat > 0) concurrentLatencies.push(lat);
     log(`  Concurrent turn ${i + 1}: ${lat}ms (A deltas: ${stateA.deltasReceived})`);
     const end = Date.now() + 60_000;
@@ -569,9 +614,10 @@ async function testB(): Promise<TestResult> {
           : null,
       sessionA_deltas: stateA.deltasReceived,
       sessionB_totalDeltas: stateB.deltasReceived,
-      note: "Node's V8 GC is stop-the-world — all sessions share the same heap. " +
-            "Cross-contamination may not show in this test because child processes " +
-            "run in separate OS processes, but GC in the MANAGER process affects all event handling.",
+      note:
+        "Node's V8 GC is stop-the-world — all sessions share the same heap. " +
+        "Cross-contamination may not show in this test because child processes " +
+        "run in separate OS processes, but GC in the MANAGER process affects all event handling.",
     },
   };
 
@@ -625,13 +671,16 @@ async function testC(): Promise<TestResult> {
   log(`${activeSessions.size} sessions started`);
 
   // Send tasks
-  const prompt = "Write a detailed explanation of how compilers work, covering lexing, parsing, AST construction, and code generation. Do not use tools.";
+  const prompt =
+    "Write a detailed explanation of how compilers work, covering lexing, parsing, AST construction, and code generation. Do not use tools.";
   for (const tid of sessionIds) {
     const state = states.get(tid)!;
     if (state.errors.length > 0) continue;
     const session = activeSessions.get(tid);
     if (session) {
-      try { await sendTurn(session, prompt); } catch (e) {
+      try {
+        await sendTurn(session, prompt);
+      } catch (e) {
         state.errors.push(e instanceof Error ? e.message : String(e));
       }
     }
@@ -661,16 +710,16 @@ async function testC(): Promise<TestResult> {
 
   // Check survivor state
   const survivorIds = sessionIds.slice(3);
-  const survivorErrors = survivorIds
-    .map((tid) => states.get(tid)!)
-    .flatMap((s) => s.errors);
+  const survivorErrors = survivorIds.map((tid) => states.get(tid)!).flatMap((s) => s.errors);
 
   const postKill = collectNodeMetrics(activeSessions.size);
   allMetrics.push(postKill);
 
   killAllSessions();
   await sleep(3000);
-  try { global.gc?.(); } catch {}
+  try {
+    global.gc?.();
+  } catch {}
   await sleep(2000);
   allMetrics.push(collectNodeMetrics(0));
 
@@ -696,8 +745,9 @@ async function testC(): Promise<TestResult> {
       preKillRss: preKill.memory.rss,
       postKillRss: postKill.memory.rss,
       cascadingFailures: survivorErrors.length > 0,
-      note: "Node kills child processes via child.kill(). The V8 heap shared by " +
-            "the manager process is NOT immediately affected — GC reclaims eventually.",
+      note:
+        "Node kills child processes via child.kill(). The V8 heap shared by " +
+        "the manager process is NOT immediately affected — GC reclaims eventually.",
     },
   };
 
@@ -720,11 +770,15 @@ function startMockSession(
 ): Promise<CodexSession> {
   return new Promise((resolve, reject) => {
     const mockPath = `${process.cwd()}/scripts/mock-codex-server.ts`;
-    const child = spawn("bun", ["run", mockPath, String(deltaCount), String(deltaSizeKb), String(delayMs)], {
-      cwd: CWD,
-      env: process.env,
-      stdio: ["pipe", "pipe", "pipe"],
-    });
+    const child = spawn(
+      "bun",
+      ["run", mockPath, String(deltaCount), String(deltaSizeKb), String(delayMs)],
+      {
+        cwd: CWD,
+        env: process.env,
+        stdio: ["pipe", "pipe", "pipe"],
+      },
+    );
 
     const rl = readline.createInterface({ input: child.stdout });
     const session: CodexSession = {
@@ -767,7 +821,10 @@ function startMockSession(
     activeSessions.set(threadId, session);
 
     // Initialize handshake
-    sendRpc(session, "initialize", { clientInfo: { name: "gc-lab", version: "1.0" }, capabilities: {} })
+    sendRpc(session, "initialize", {
+      clientInfo: { name: "gc-lab", version: "1.0" },
+      capabilities: {},
+    })
       .then(() => {
         sendNotification(session, "initialized");
         return sendRpc(session, "thread/start", {});
@@ -803,7 +860,12 @@ async function testGcLab(): Promise<TestResult> {
         gcPauses.push({
           time: entry.startTime,
           duration: entry.duration,
-          kind: entry.detail?.kind === 1 ? "scavenge" : entry.detail?.kind === 2 ? "mark-sweep" : `kind-${entry.detail?.kind ?? "?"}`,
+          kind:
+            entry.detail?.kind === 1
+              ? "scavenge"
+              : entry.detail?.kind === 2
+                ? "mark-sweep"
+                : `kind-${entry.detail?.kind ?? "?"}`,
         });
       }
     });
@@ -844,7 +906,8 @@ async function testGcLab(): Promise<TestResult> {
     if (lagTimer) clearTimeout(lagTimer);
   }
 
-  const makeLabHandler = (state: SessionState, retainDeltas: boolean) =>
+  const makeLabHandler =
+    (state: SessionState, retainDeltas: boolean) =>
     (method: string, params: Record<string, unknown>) => {
       if (method === "turn/started") state.turnStartedAt = Date.now();
       if (method === "item/agentMessage/delta") {
@@ -882,7 +945,9 @@ async function testGcLab(): Promise<TestResult> {
   const baselineLags = [...bEventLoopLags];
   bEventLoopLags.length = 0;
   allMetrics.push(collectNodeMetrics(activeSessions.size));
-  log(`Baseline: ${stateB.deltasReceived} deltas, ${baselineLags.length} lag samples, p50=${percentile(baselineLags, 50).toFixed(2)}ms, p99=${percentile(baselineLags, 99).toFixed(2)}ms, max=${baselineLags.length > 0 ? Math.max(...baselineLags).toFixed(2) : 0}ms`);
+  log(
+    `Baseline: ${stateB.deltasReceived} deltas, ${baselineLags.length} lag samples, p50=${percentile(baselineLags, 50).toFixed(2)}ms, p99=${percentile(baselineLags, 99).toFixed(2)}ms, max=${baselineLags.length > 0 ? Math.max(...baselineLags).toFixed(2) : 0}ms`,
+  );
 
   const gcBefore = gcPauses.length;
   const heapBefore = process.memoryUsage().heapUsed;
@@ -912,13 +977,21 @@ async function testGcLab(): Promise<TestResult> {
 
   allMetrics.push(collectNodeMetrics(activeSessions.size));
 
-  log(`Concurrent: ${stateB.deltasReceived} total B deltas, ${concurrentLags.length} lag samples, p50=${percentile(concurrentLags, 50).toFixed(2)}ms, p99=${percentile(concurrentLags, 99).toFixed(2)}ms, max=${concurrentLags.length > 0 ? Math.max(...concurrentLags).toFixed(2) : 0}ms`);
-  log(`Heap growth: ${((heapAfter - heapBefore) / 1024 / 1024).toFixed(1)}MB (retained objects: ${retainedObjects.length})`);
+  log(
+    `Concurrent: ${stateB.deltasReceived} total B deltas, ${concurrentLags.length} lag samples, p50=${percentile(concurrentLags, 50).toFixed(2)}ms, p99=${percentile(concurrentLags, 99).toFixed(2)}ms, max=${concurrentLags.length > 0 ? Math.max(...concurrentLags).toFixed(2) : 0}ms`,
+  );
+  log(
+    `Heap growth: ${((heapAfter - heapBefore) / 1024 / 1024).toFixed(1)}MB (retained objects: ${retainedObjects.length})`,
+  );
   log(`GC pauses during concurrent phase: ${gcDuringConcurrent.length}`);
   if (gcDuringConcurrent.length > 0) {
     const markSweeps = gcDuringConcurrent.filter((p) => p.kind === "mark-sweep");
-    log(`  Mark-sweep pauses: ${markSweeps.length}, max=${Math.max(...markSweeps.map((p) => p.duration)).toFixed(2)}ms`);
-    log(`  Total GC pause time: ${gcDuringConcurrent.reduce((s, p) => s + p.duration, 0).toFixed(2)}ms`);
+    log(
+      `  Mark-sweep pauses: ${markSweeps.length}, max=${Math.max(...markSweeps.map((p) => p.duration)).toFixed(2)}ms`,
+    );
+    log(
+      `  Total GC pause time: ${gcDuringConcurrent.reduce((s, p) => s + p.duration, 0).toFixed(2)}ms`,
+    );
   }
 
   // Capture count before cleanup
@@ -944,18 +1017,22 @@ async function testGcLab(): Promise<TestResult> {
       concurrentLagSamples: concurrentLags.length,
       baselineP50_ms: Math.round(percentile(baselineLags, 50) * 100) / 100,
       baselineP99_ms: Math.round(percentile(baselineLags, 99) * 100) / 100,
-      baselineMax_ms: baselineLags.length > 0 ? Math.round(Math.max(...baselineLags) * 100) / 100 : 0,
+      baselineMax_ms:
+        baselineLags.length > 0 ? Math.round(Math.max(...baselineLags) * 100) / 100 : 0,
       concurrentP50_ms: Math.round(percentile(concurrentLags, 50) * 100) / 100,
       concurrentP99_ms: Math.round(percentile(concurrentLags, 99) * 100) / 100,
-      concurrentMax_ms: concurrentLags.length > 0 ? Math.round(Math.max(...concurrentLags) * 100) / 100 : 0,
-      heapGrowthMb: Math.round((heapAfter - heapBefore) / 1024 / 1024 * 10) / 10,
+      concurrentMax_ms:
+        concurrentLags.length > 0 ? Math.round(Math.max(...concurrentLags) * 100) / 100 : 0,
+      heapGrowthMb: Math.round(((heapAfter - heapBefore) / 1024 / 1024) * 10) / 10,
       retainedObjects: retainedCount,
       gcPausesDuringConcurrent: gcDuringConcurrent.length,
-      gcTotalPauseMs: Math.round(gcDuringConcurrent.reduce((s, p) => s + p.duration, 0) * 100) / 100,
+      gcTotalPauseMs:
+        Math.round(gcDuringConcurrent.reduce((s, p) => s + p.duration, 0) * 100) / 100,
       gcMarkSweepCount: gcDuringConcurrent.filter((p) => p.kind === "mark-sweep").length,
-      gcMaxPauseMs: gcDuringConcurrent.length > 0
-        ? Math.round(Math.max(...gcDuringConcurrent.map((p) => p.duration)) * 100) / 100
-        : 0,
+      gcMaxPauseMs:
+        gcDuringConcurrent.length > 0
+          ? Math.round(Math.max(...gcDuringConcurrent.map((p) => p.duration)) * 100) / 100
+          : 0,
       sessionA_deltas: stateA.deltasReceived,
       sessionA_payloadSizeKb: 500,
       sessionB_deltas: stateB.deltasReceived,
@@ -999,7 +1076,9 @@ async function testConcurrent(): Promise<TestResult> {
     lastCheck = performance.now();
     lagTimer = setTimeout(tick, 1);
   }
-  function stopLag() { if (lagTimer) clearTimeout(lagTimer); }
+  function stopLag() {
+    if (lagTimer) clearTimeout(lagTimer);
+  }
 
   allMetrics.push(collectNodeMetrics(0));
 
@@ -1069,7 +1148,9 @@ async function testConcurrent(): Promise<TestResult> {
 
   log(`Completed: ${completed}/${N}, total deltas: ${totalDeltas}`);
   log(`Event throughput: ${eventsPerSecond} events/s`);
-  log(`Event loop lag: p50=${percentile(lags, 50).toFixed(1)}ms, p99=${percentile(lags, 99).toFixed(1)}ms, max=${lags.length > 0 ? Math.max(...lags).toFixed(1) : 0}ms`);
+  log(
+    `Event loop lag: p50=${percentile(lags, 50).toFixed(1)}ms, p99=${percentile(lags, 99).toFixed(1)}ms, max=${lags.length > 0 ? Math.max(...lags).toFixed(1) : 0}ms`,
+  );
 
   killAllSessions();
   await sleep(2000);

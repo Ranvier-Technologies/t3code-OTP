@@ -57,4 +57,3 @@ export function makeProviderAdapterRegistryLayer(
 ) {
   return Layer.effect(ProviderAdapterRegistry, makeProviderAdapterRegistry({ adapters }));
 }
-

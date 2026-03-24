@@ -212,7 +212,7 @@ defmodule HarnessWeb.HarnessChannel do
   Used by clients to recover events lost during WebSocket disconnection.
   """
   @impl true
-  def handle_in("events.replay", %{"afterSeq" => after_seq}, socket) do
+  def handle_in("events.replay", %{"afterSeq" => after_seq}, socket) when is_integer(after_seq) do
     case SnapshotServer.replay_since(after_seq) do
       {:ok, current_seq, events} ->
         {:reply, {:ok, %{currentSeq: current_seq, events: events}}, socket}
@@ -225,6 +225,11 @@ defmodule HarnessWeb.HarnessChannel do
           requiresFullSync: true
         }}, socket}
     end
+  end
+
+  @impl true
+  def handle_in("events.replay", _params, socket) do
+    {:reply, {:error, %{message: "Missing or invalid required param: afterSeq (integer)"}}, socket}
   end
 
   # --- PubSub → Channel Push ---

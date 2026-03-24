@@ -72,7 +72,7 @@ defmodule Harness.SnapshotServer do
         _ -> seq
       end
 
-      if after_seq < oldest_seq do
+      if after_seq < oldest_seq - 1 do
         # Gap — requested events have been evicted
         {:reply, {:gap, seq, oldest_seq}, state}
       else

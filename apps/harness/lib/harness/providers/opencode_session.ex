@@ -818,19 +818,18 @@ defmodule Harness.Providers.OpenCodeSession do
         })
 
       "step-finish" ->
-        step_id = Map.get(part, "id")
+        # Use part.id when available. When omitted (OpenCode sometimes drops IDs
+        # on finish), fall back to a synthetic ID so the UI clears the step.
+        step_id = Map.get(part, "id") || generate_id()
+        tool_name = Map.get(part, "tool") || Map.get(part, "name") || "step"
 
-        if step_id do
-          tool_name = Map.get(part, "tool") || Map.get(part, "name") || "step"
-
-          emit_event(state, :notification, "item/completed", %{
-            "itemId" => step_id,
-            "itemType" => "dynamic_tool_call",
-            "toolName" => tool_name,
-            "status" => "completed",
-            "turnId" => turn_id
-          })
-        end
+        emit_event(state, :notification, "item/completed", %{
+          "itemId" => step_id,
+          "itemType" => "dynamic_tool_call",
+          "toolName" => tool_name,
+          "status" => "completed",
+          "turnId" => turn_id
+        })
 
       _ -> :ok
     end

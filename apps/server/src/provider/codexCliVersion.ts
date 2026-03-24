@@ -1,4 +1,5 @@
-const CODEX_VERSION_PATTERN = /\bv?(\d+\.\d+(?:\.\d+)?(?:-[0-9A-Za-z.-]+)?)\b/;
+const CODEX_VERSION_PATTERN =
+  /(?<![0-9A-Za-z.-])v?(\d+\.\d+(?:\.\d+)?(?:-[0-9A-Za-z.-]+)?)(?=$|[^0-9A-Za-z.-])/;
 
 export const MINIMUM_CODEX_CLI_VERSION = "0.37.0";
 
@@ -136,6 +137,8 @@ export function isCodexCliVersionSupported(version: string): boolean {
 }
 
 export function formatCodexCliUpgradeMessage(version: string | null): string {
-  const versionLabel = version ? `v${version}` : "the installed version";
-  return `Codex CLI ${versionLabel} is too old for T3 Code. Upgrade to v${MINIMUM_CODEX_CLI_VERSION} or newer and restart T3 Code.`;
+  if (version) {
+    return `Codex CLI v${version} is too old for T3 Code. Upgrade to v${MINIMUM_CODEX_CLI_VERSION} or newer and restart T3 Code.`;
+  }
+  return `The installed Codex CLI version is too old for T3 Code. Upgrade to v${MINIMUM_CODEX_CLI_VERSION} or newer and restart T3 Code.`;
 }

@@ -63,7 +63,10 @@ type PhxMessage = [string | null, string | null, string, string, unknown];
 class PhoenixChannelClient {
   private ws: WebSocket | null = null;
   private nextRef = 1;
-  private pending = new Map<string, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
+  private pending = new Map<
+    string,
+    { resolve: (v: unknown) => void; reject: (e: Error) => void }
+  >();
   private joinRef: string | null = null;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   public pushEvents: Array<{ event: string; payload: unknown }> = [];
@@ -97,7 +100,10 @@ class PhoenixChannelClient {
 
   private handleMessage(msg: PhxMessage) {
     const [joinRef, ref, topic, event, payload] = msg;
-    log("WS-RX", `[${joinRef}, ${ref}, ${topic}, ${event}, ${JSON.stringify(payload).slice(0, 200)}]`);
+    log(
+      "WS-RX",
+      `[${joinRef}, ${ref}, ${topic}, ${event}, ${JSON.stringify(payload).slice(0, 200)}]`,
+    );
 
     if (event === "phx_reply" && ref != null) {
       // Phoenix may return ref as integer or string — normalize to string
@@ -112,7 +118,10 @@ class PhoenixChannelClient {
           pending.reject(new Error(JSON.stringify(reply.response)));
         }
       } else {
-        log("WS-RX", `No pending request for ref=${refStr}, pending keys: [${[...this.pending.keys()]}]`);
+        log(
+          "WS-RX",
+          `No pending request for ref=${refStr}, pending keys: [${[...this.pending.keys()]}]`,
+        );
       }
     } else if (event !== "phx_reply") {
       this.pushEvents.push({ event, payload });
@@ -150,8 +159,14 @@ class PhoenixChannelClient {
       }, TIMEOUT);
 
       this.pending.set(actualRef, {
-        resolve: (v) => { clearTimeout(timer); resolve(v); },
-        reject: (e) => { clearTimeout(timer); reject(e); },
+        resolve: (v) => {
+          clearTimeout(timer);
+          resolve(v);
+        },
+        reject: (e) => {
+          clearTimeout(timer);
+          reject(e);
+        },
       });
 
       const json = JSON.stringify(msg);
@@ -191,7 +206,13 @@ async function main() {
 
   const record = (test: string, ok: boolean, detail?: string) => {
     results.push({ test, ok, detail });
-    if (ok) { pass(test); passed++; } else { fail(`${test}: ${detail}`); failed_++; }
+    if (ok) {
+      pass(test);
+      passed++;
+    } else {
+      fail(`${test}: ${detail}`);
+      failed_++;
+    }
   };
 
   try {
@@ -218,7 +239,11 @@ async function main() {
     // Step 2: Wait for server
     log("WAIT", "Waiting for Phoenix to be ready...");
     const ready = await waitForServer(HARNESS_PORT);
-    record("Phoenix server starts", ready, ready ? undefined : "Server did not become ready within 30s");
+    record(
+      "Phoenix server starts",
+      ready,
+      ready ? undefined : "Server did not become ready within 30s",
+    );
     if (!ready) throw new Error("Server not ready");
 
     log("READY", `Phoenix listening on port ${HARNESS_PORT}`);
@@ -236,17 +261,31 @@ async function main() {
 
     // Step 5: snapshot.get
     log("TEST", "Sending snapshot.get...");
-    const snapshot = await client.push("harness:lobby", "snapshot.get", {}) as Record<string, unknown>;
+    const snapshot = (await client.push("harness:lobby", "snapshot.get", {})) as Record<
+      string,
+      unknown
+    >;
     const hasSnapshot = snapshot && typeof snapshot === "object" && "snapshot" in snapshot;
-    record("snapshot.get returns data", hasSnapshot,
-      hasSnapshot ? `sequence=${(snapshot.snapshot as Record<string, unknown>).sequence}` : "No snapshot in response");
+    record(
+      "snapshot.get returns data",
+      hasSnapshot,
+      hasSnapshot
+        ? `sequence=${(snapshot.snapshot as Record<string, unknown>).sequence}`
+        : "No snapshot in response",
+    );
 
     // Step 6: session.listSessions
     log("TEST", "Sending session.listSessions...");
-    const sessions = await client.push("harness:lobby", "session.listSessions", {}) as Record<string, unknown>;
+    const sessions = (await client.push("harness:lobby", "session.listSessions", {})) as Record<
+      string,
+      unknown
+    >;
     const hasSessions = sessions && typeof sessions === "object" && "sessions" in sessions;
-    record("session.listSessions returns data", hasSessions,
-      hasSessions ? `count=${(sessions.sessions as unknown[]).length}` : "No sessions in response");
+    record(
+      "session.listSessions returns data",
+      hasSessions,
+      hasSessions ? `count=${(sessions.sessions as unknown[]).length}` : "No sessions in response",
+    );
 
     // Step 7: Test each provider (optional)
     if (!SKIP_PROVIDERS) {
@@ -265,8 +304,11 @@ async function main() {
           const msg = err instanceof Error ? err.message : String(err);
           // "Unsupported provider" = real failure, anything else = binary not found (acceptable)
           const isUnsupported = msg.includes("Unsupported provider");
-          record(`session.start(${provider}) recognized`, !isUnsupported,
-            isUnsupported ? "Provider not registered" : `Expected failure: ${msg.slice(0, 100)}`);
+          record(
+            `session.start(${provider}) recognized`,
+            !isUnsupported,
+            isUnsupported ? "Provider not registered" : `Expected failure: ${msg.slice(0, 100)}`,
+          );
         }
 
         // Give session time to start/fail before next
@@ -277,12 +319,11 @@ async function main() {
     // Step 8: Check for push events received
     log("TEST", `Received ${client.pushEvents.length} push events during test`);
     if (client.pushEvents.length > 0) {
-      const eventTypes = [...new Set(client.pushEvents.map(e => e.event))];
+      const eventTypes = [...new Set(client.pushEvents.map((e) => e.event))];
       record("Push events received", true, `types: ${eventTypes.join(", ")}`);
     }
 
     client.disconnect();
-
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     fail(`Fatal: ${msg}`);
