@@ -398,9 +398,11 @@ const checkBinaryProviderStatus = (
   provider: "claudeAgent" | "cursor" | "opencode",
   binary: string,
   versionArgs: ReadonlyArray<string>,
+  options?: { displayName?: string },
 ): Effect.Effect<ServerProviderStatus, never, ChildProcessSpawner.ChildProcessSpawner> =>
   Effect.gen(function* () {
     const checkedAt = new Date().toISOString();
+    const label = options?.displayName ?? binary;
     const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
     const command = ChildProcess.make(binary, [...versionArgs], {
       shell: process.platform === "win32",
@@ -426,7 +428,7 @@ const checkBinaryProviderStatus = (
         available: false,
         authStatus: "unknown" as const,
         checkedAt,
-        message: `${binary} is not installed or not on PATH.`,
+        message: `${label} is not installed or not on PATH.`,
       };
     }
 
@@ -486,9 +488,94 @@ export const checkClaudeProviderStatus: Effect.Effect<
   ServerProviderStatus,
   never,
   ChildProcessSpawner.ChildProcessSpawner | FileSystem.FileSystem
-> = resolveClaudeBinary().pipe(
-  Effect.flatMap((binary) => checkBinaryProviderStatus("claudeAgent", binary, ["--version"])),
-);
+> = Effect.gen(function* () {
+  const binary = yield* resolveClaudeBinary();
+  const binaryStatus = yield* checkBinaryProviderStatus("claudeAgent", binary, ["--version"], {
+    displayName: "Claude Agent CLI (`claude`)",
+  });
+  if (binaryStatus.status !== "ready") return binaryStatus;
+
+  // Run `claude auth status` to check authentication
+  const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+  const authResult = yield* Effect.gen(function* () {
+    const command = ChildProcess.make(binary, ["auth", "status"], {
+      shell: process.platform === "win32",
+    });
+    const child = yield* spawner.spawn(command);
+    const [stdout, stderr, exitCode] = yield* Effect.all(
+      [
+        collectStreamAsString(child.stdout),
+        collectStreamAsString(child.stderr),
+        child.exitCode.pipe(Effect.map(Number)),
+      ],
+      { concurrency: "unbounded" },
+    );
+    return { stdout, stderr, code: exitCode };
+  }).pipe(Effect.scoped, Effect.timeoutOption(DEFAULT_TIMEOUT_MS), Effect.result);
+
+  if (Result.isFailure(authResult)) {
+    // auth status command not available — version too old or not supported
+    return {
+      ...binaryStatus,
+      status: "warning" as const,
+      authStatus: "unknown" as const,
+      message:
+        "Claude Agent authentication status command is unavailable in this version of Claude.",
+    };
+  }
+
+  if (Option.isNone(authResult.success)) {
+    return {
+      ...binaryStatus,
+      status: "warning" as const,
+      authStatus: "unknown" as const,
+      message:
+        "Claude Agent authentication status command is unavailable in this version of Claude.",
+    };
+  }
+
+  const authProbe = authResult.success.value;
+  const authOutput = (authProbe.stdout + authProbe.stderr).toLowerCase();
+
+  // Try to parse JSON output (newer Claude versions)
+  try {
+    const parsed = JSON.parse(authProbe.stdout.trim());
+    if (parsed.loggedIn === true) {
+      return { ...binaryStatus, authStatus: "authenticated" as const };
+    }
+    if (parsed.loggedIn === false) {
+      return {
+        ...binaryStatus,
+        status: "error" as const,
+        authStatus: "unauthenticated" as const,
+        message: "Claude is not authenticated. Run `claude auth login` and try again.",
+      };
+    }
+  } catch {
+    // Not JSON — check text output
+  }
+
+  if (authOutput.includes("not logged in")) {
+    return {
+      ...binaryStatus,
+      status: "error" as const,
+      authStatus: "unauthenticated" as const,
+      message: "Claude is not authenticated. Run `claude auth login` and try again.",
+    };
+  }
+
+  if (authProbe.code !== 0) {
+    return {
+      ...binaryStatus,
+      status: "warning" as const,
+      authStatus: "unknown" as const,
+      message:
+        "Claude Agent authentication status command is unavailable in this version of Claude.",
+    };
+  }
+
+  return { ...binaryStatus, authStatus: "authenticated" as const };
+});
 
 const checkCursorBinaryStatus = checkBinaryProviderStatus("cursor", "cursor-agent", ["--version"]);
 
