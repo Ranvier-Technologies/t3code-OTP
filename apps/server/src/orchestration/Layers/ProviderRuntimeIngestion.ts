@@ -7,7 +7,9 @@ import {
   type OrchestrationProposedPlanId,
   CheckpointRef,
   isToolLifecycleItemType,
+  ProjectId,
   ThreadId,
+  TrimmedNonEmptyString,
   TurnId,
   type OrchestrationThreadActivity,
   type ProviderRuntimeEvent,
@@ -879,16 +881,18 @@ const make = Effect.gen(function* () {
               `Thread '${event.threadId}' not found for ${event.type} event from provider '${event.provider}'. ` +
                 `Creating minimal thread to prevent event loss.`,
             );
+            const eventModel =
+              ((event.payload as Record<string, unknown>)?.model as string | undefined) ??
+              "unknown";
             yield* orchestrationEngine.dispatch({
               type: "thread.create",
               commandId: CommandId.makeUnsafe(
                 `auto-create-${event.threadId}:${crypto.randomUUID()}`,
               ),
               threadId: event.threadId,
-              projectId: "" as any,
-              title: "Auto-created" as any,
-              model: (((event.payload as Record<string, unknown>)?.model as string | undefined) ??
-                "unknown") as any,
+              projectId: ProjectId.makeUnsafe("auto-created"),
+              title: TrimmedNonEmptyString.makeUnsafe("Auto-created"),
+              model: TrimmedNonEmptyString.makeUnsafe(eventModel),
               runtimeMode: "full-access",
               interactionMode: "default",
               branch: null,

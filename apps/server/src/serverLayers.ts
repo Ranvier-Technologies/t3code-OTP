@@ -61,14 +61,10 @@ const makeRuntimePtyAdapterLayer = () =>
   }).pipe(Layer.unwrap);
 
 /**
- * Provider layer: Claude and Codex always use the Node SDK adapters directly.
- * When the Elixir harness is available (harnessPort configured), Cursor and
- * OpenCode are additionally routed through it. Without harness, only Claude
- * and Codex are available.
- *
- * This follows the "Model D" decision: Node SDK for providers with rich
- * TypeScript SDKs (Claude Agent SDK, Codex CLI), Elixir harness only for
- * providers where OTP adds clear value (Cursor, OpenCode).
+ * Provider layer: Claude always uses the Node SDK adapter (Agent SDK).
+ * When the Elixir harness is available (harnessPort configured), Codex,
+ * Cursor, and OpenCode are routed through it. Without harness, only
+ * Claude and Codex (via Node SDK) are available.
  */
 export function makeServerProviderLayer() {
   return Effect.gen(function* () {
