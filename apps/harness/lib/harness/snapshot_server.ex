@@ -215,29 +215,37 @@ defmodule Harness.SnapshotServer do
 
         # Persist synthetic reconciliation event to SQL (best-effort)
         try do
-          Harness.Storage.insert_event(%{
-            event_id: "reconcile-#{thread_id}-#{new_seq}",
-            thread_id: thread_id,
-            provider: session.provider,
-            kind: "session",
-            method: "session/error",
-            payload: %{"reason" => "runtime_restarted", "previousStatus" => prev_status},
-            created_at: now
-          })
+          case Harness.Storage.insert_event(%{
+                 event_id: "reconcile-#{thread_id}-#{new_seq}",
+                 thread_id: thread_id,
+                 provider: session.provider,
+                 kind: "session",
+                 method: "session/error",
+                 payload: %{"reason" => "runtime_restarted", "previousStatus" => prev_status},
+                 created_at: now
+               }) do
+            {:ok, _seq} ->
+              case Harness.Storage.upsert_session(%{
+                     thread_id: thread_id,
+                     provider: session.provider,
+                     status: :error,
+                     model: session.model,
+                     cwd: session.cwd,
+                     runtime_mode: session.runtime_mode,
+                     active_turn: nil,
+                     pending_requests: session.pending_requests,
+                     created_at: session.created_at,
+                     updated_at: now,
+                     last_sequence: new_seq
+                   }) do
+                :ok -> :ok
+                {:error, reason} ->
+                  Logger.error("Reconciliation upsert failed for #{thread_id}: #{inspect(reason)}")
+              end
 
-          Harness.Storage.upsert_session(%{
-            thread_id: thread_id,
-            provider: session.provider,
-            status: :error,
-            model: session.model,
-            cwd: session.cwd,
-            runtime_mode: session.runtime_mode,
-            active_turn: nil,
-            pending_requests: session.pending_requests,
-            created_at: session.created_at,
-            updated_at: now,
-            last_sequence: new_seq
-          })
+            {:error, reason} ->
+              Logger.error("Reconciliation event insert failed for #{thread_id}: #{inspect(reason)}")
+          end
         catch
           :exit, reason ->
             Logger.error("Failed to persist reconciliation for #{thread_id}: #{inspect(reason)}")

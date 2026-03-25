@@ -9,14 +9,18 @@ set -euo pipefail
 INPUT=$(cat)
 COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty')
 
-# Only intercept commands where gh pr create is the actual command being run
-# (not just mentioned in a string like a commit message)
-if ! echo "$COMMAND" | grep -qE '(^|\&\&|\|\||;)\s*gh\s+pr\s+create\b'; then
+# Only intercept commands containing gh pr create
+if ! echo "$COMMAND" | grep -q 'gh pr create'; then
   exit 0
 fi
 
-# Allow if correct --repo is specified
-if echo "$COMMAND" | grep -q '\-\-repo Ranvier-Technologies/t3code-OTP'; then
+# Skip if gh pr create is inside a git commit message (not an actual command)
+if echo "$COMMAND" | grep -qE '^\s*git\s+commit\b'; then
+  exit 0
+fi
+
+# Allow if correct --repo is specified (space or equals form)
+if echo "$COMMAND" | grep -qE '\-\-repo[= ]Ranvier-Technologies/t3code-OTP'; then
   exit 0
 fi
 
