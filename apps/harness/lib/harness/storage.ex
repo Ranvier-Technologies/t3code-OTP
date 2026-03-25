@@ -69,7 +69,7 @@ defmodule Harness.Storage do
     GenServer.call(__MODULE__, {:upsert_binding, thread_id, provider, resume_cursor_json})
   end
 
-  @doc "Get the binding for a thread. Returns {thread_id, provider, resume_cursor_json} or nil."
+  @doc "Get the binding for a thread. Returns %{thread_id, provider, resume_cursor_json} or nil."
   def get_binding(thread_id) do
     GenServer.call(__MODULE__, {:get_binding, thread_id})
   end
