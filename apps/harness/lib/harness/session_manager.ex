@@ -37,6 +37,8 @@ defmodule Harness.SessionManager do
   end
 
   defp start_session_with_module(session_module, thread_id, provider, params) do
+    params = maybe_inject_resume_cursor(params, thread_id, provider)
+
     child_spec =
       {session_module,
        %{
@@ -257,6 +259,38 @@ defmodule Harness.SessionManager do
   def handle_provider_event(event) do
     SnapshotServer.apply_event(event)
   end
+
+  @doc false
+  # Inject resumeCursor from SQLite binding if one exists and the provider matches.
+  # If the caller already supplied a resumeCursor, respect it (don't overwrite).
+  def maybe_inject_resume_cursor(%{"resumeCursor" => _} = params, _thread_id, _provider) do
+    params
+  end
+
+  def maybe_inject_resume_cursor(params, thread_id, provider) do
+    case Harness.Storage.get_binding(thread_id) do
+      %{provider: ^provider, resume_cursor_json: cursor_json} when is_binary(cursor_json) ->
+        case Jason.decode(cursor_json) do
+          {:ok, cursor} ->
+            normalized = normalize_resume_cursor(cursor)
+            Logger.info("Injecting resumeCursor from binding for #{thread_id} (#{provider})")
+            Map.put(params, "resumeCursor", normalized)
+
+          {:error, reason} ->
+            Logger.warning("Failed to decode binding cursor for #{thread_id}: #{inspect(reason)}")
+            params
+        end
+
+      _ ->
+        # No binding, provider mismatch, or nil cursor — start fresh
+        params
+    end
+  end
+
+  # Codex stores {"threadId": "..."} but CodexSession expects the raw string.
+  # Other providers store richer objects their session modules know how to parse.
+  defp normalize_resume_cursor(%{"threadId" => tid}) when is_binary(tid), do: tid
+  defp normalize_resume_cursor(cursor), do: cursor
 
   defp provider_module("codex"), do: {:ok, CodexSession}
   defp provider_module("claudeAgent"), do: {:ok, ClaudeSession}

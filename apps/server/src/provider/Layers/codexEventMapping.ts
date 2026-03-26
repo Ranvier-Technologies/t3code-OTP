@@ -514,6 +514,8 @@ const QUIET_UNMAPPED_EVENTS = new Set([
   "hook_response",
   "user",
   "thinking",
+  // Raw equivalents of item/agentMessage/delta (already mapped).
+  // Mapping these would cause duplicate deltas in the UI.
   "codex/event/agent_message_delta",
   "codex/event/agent_message",
   "codex/event/agent_message_content_delta",

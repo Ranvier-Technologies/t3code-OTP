@@ -917,10 +917,9 @@ function mapHarnessEventToRuntimeEvents(
     return providerMapped;
   }
 
-  // Silently drop unrecognised events. Provider-specific notifications that
-  // pass through the GenServer (e.g. Codex app-server lifecycle events) are
-  // not bugs — they're simply events with no canonical mapping. The raw event
-  // stream still contains them for debugging.
+  // Unmapped events are already logged by codexMapToRuntimeEvents (which
+  // handles both QUIET_UNMAPPED_EVENTS suppression and console.debug for
+  // genuinely unknown methods). No additional logging needed here.
   return [];
 }
 

@@ -2,15 +2,9 @@
  * Unit tests for codexEventMapping — calls mapToRuntimeEvents directly
  * without the full adapter/stream infrastructure.
  */
-import { describe, it, expect } from "bun:test";
+import { describe, it, expect } from "vitest";
 import { mapToRuntimeEvents } from "./codexEventMapping.ts";
-import {
-  EventId,
-  type ProviderEvent,
-  ProviderItemId,
-  ThreadId,
-  TurnId,
-} from "@t3tools/contracts";
+import { EventId, type ProviderEvent, ProviderItemId, ThreadId, TurnId } from "@t3tools/contracts";
 
 const threadId = ThreadId.makeUnsafe("thread-1");
 
