@@ -591,9 +591,13 @@ async function testH3(client: T3Client, projectId: string): Promise<HypothesisRe
       sessionSetCount++;
       const sessionStatus = (data.payload as Record<string, unknown>)?.session;
       const status = (sessionStatus as Record<string, unknown>)?.status;
-      if (status === "starting") {
+      const commandId = (data as Record<string, unknown>)?.commandId as string | undefined;
+      // Only count "starting" events from the reactor (server:provider-session-set:*)
+      // not from the provider runtime ingestion (provider:*:thread-session-set:*)
+      // which reports the same startup from the harness perspective.
+      if (status === "starting" && commandId?.startsWith("server:provider-session-set")) {
         sessionStartCount++;
-        result.evidence.push(`session START #${sessionStartCount} at t=${ts()}`);
+        result.evidence.push(`reactor session START #${sessionStartCount} at t=${ts()}`);
       }
     }
     if (eventType === "thread.turn-start-requested") turnStartCount++;
