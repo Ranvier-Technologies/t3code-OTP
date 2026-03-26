@@ -338,6 +338,83 @@ defmodule Harness.StorageTest do
     assert Storage.get_binding("t3").provider == "opencode"
   end
 
+  # --- Resume cursor injection tests (SessionManager.maybe_inject_resume_cursor) ---
+
+  alias Harness.SessionManager
+
+  test "injects resumeCursor when binding exists and provider matches" do
+    cursor = Jason.encode!(%{"threadId" => "codex-abc"})
+    :ok = Storage.upsert_binding("t1", "codex", cursor)
+
+    params = %{"threadId" => "t1", "provider" => "codex"}
+    result = SessionManager.maybe_inject_resume_cursor(params, "t1", "codex")
+
+    assert result["resumeCursor"] == %{"threadId" => "codex-abc"}
+  end
+
+  test "does NOT inject resumeCursor when provider mismatches" do
+    cursor = Jason.encode!(%{"threadId" => "codex-abc"})
+    :ok = Storage.upsert_binding("t1", "codex", cursor)
+
+    params = %{"threadId" => "t1", "provider" => "cursor"}
+    result = SessionManager.maybe_inject_resume_cursor(params, "t1", "cursor")
+
+    refute Map.has_key?(result, "resumeCursor")
+  end
+
+  test "does NOT inject resumeCursor when no binding exists" do
+    params = %{"threadId" => "t1", "provider" => "codex"}
+    result = SessionManager.maybe_inject_resume_cursor(params, "t1", "codex")
+
+    refute Map.has_key?(result, "resumeCursor")
+  end
+
+  test "does NOT overwrite caller-supplied resumeCursor" do
+    cursor = Jason.encode!(%{"threadId" => "codex-abc"})
+    :ok = Storage.upsert_binding("t1", "codex", cursor)
+
+    params = %{"threadId" => "t1", "provider" => "codex", "resumeCursor" => %{"threadId" => "explicit"}}
+    result = SessionManager.maybe_inject_resume_cursor(params, "t1", "codex")
+
+    assert result["resumeCursor"] == %{"threadId" => "explicit"}
+  end
+
+  test "does NOT inject resumeCursor when cursor_json is nil" do
+    :ok = Storage.upsert_binding("t1", "codex", nil)
+
+    params = %{"threadId" => "t1", "provider" => "codex"}
+    result = SessionManager.maybe_inject_resume_cursor(params, "t1", "codex")
+
+    refute Map.has_key?(result, "resumeCursor")
+  end
+
+  test "multi-session: concurrent bindings for different threads don't cross-contaminate" do
+    :ok = Storage.upsert_binding("t1", "codex", Jason.encode!(%{"threadId" => "codex-1"}))
+    :ok = Storage.upsert_binding("t2", "cursor", Jason.encode!(%{"cursorChatId" => "cursor-1"}))
+    :ok = Storage.upsert_binding("t3", "opencode", Jason.encode!(%{"sessionId" => "oc-1"}))
+
+    r1 = SessionManager.maybe_inject_resume_cursor(%{}, "t1", "codex")
+    r2 = SessionManager.maybe_inject_resume_cursor(%{}, "t2", "cursor")
+    r3 = SessionManager.maybe_inject_resume_cursor(%{}, "t3", "opencode")
+
+    assert r1["resumeCursor"] == %{"threadId" => "codex-1"}
+    assert r2["resumeCursor"] == %{"cursorChatId" => "cursor-1"}
+    assert r3["resumeCursor"] == %{"sessionId" => "oc-1"}
+  end
+
+  test "multi-session: same thread_id with different provider ignores stale binding" do
+    # Codex wrote a binding for t1
+    :ok = Storage.upsert_binding("t1", "codex", Jason.encode!(%{"threadId" => "codex-abc"}))
+
+    # Cursor tries to start on same thread — should NOT get Codex's cursor
+    result = SessionManager.maybe_inject_resume_cursor(%{}, "t1", "cursor")
+    refute Map.has_key?(result, "resumeCursor")
+
+    # Codex should still get its own cursor
+    result = SessionManager.maybe_inject_resume_cursor(%{}, "t1", "codex")
+    assert result["resumeCursor"] == %{"threadId" => "codex-abc"}
+  end
+
   # --- Integration: SnapshotServer recovery ---
 
   describe "SnapshotServer recovery" do
