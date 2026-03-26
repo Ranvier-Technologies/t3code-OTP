@@ -142,7 +142,7 @@ interface ToolInFlight {
 
 interface ClaudeSessionContext {
   session: ProviderSession;
-  readonly promptQueue: Queue.Queue<PromptQueueItem>;
+  readonly promptQueue: Queue.Queue<PromptQueueItem, Cause.Done>;
   readonly query: ClaudeQueryRuntime;
   streamFiber: Fiber.Fiber<void, Error> | undefined;
   readonly startedAt: string;
@@ -890,7 +890,7 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
       }) => query({ prompt: input.prompt, options: input.options }) as ClaudeQueryRuntime);
 
     const sessions = new Map<ThreadId, ClaudeSessionContext>();
-    const runtimeEventQueue = yield* Queue.unbounded<ProviderRuntimeEvent>();
+    const runtimeEventQueue = yield* Queue.unbounded<ProviderRuntimeEvent, Cause.Done>();
 
     const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
     const nextEventId = Effect.map(Random.nextUUIDv4, (id) => EventId.makeUnsafe(id));
@@ -2207,12 +2207,12 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
           yield* completeTurn(context, "interrupted", "Session stopped.");
         }
 
-        yield* Queue.shutdown(context.promptQueue);
+        yield* Queue.end(context.promptQueue);
 
-        // Don't explicitly interrupt the stream fiber — the promptQueue shutdown
-        // above will cause it to end naturally. Explicit Fiber.interrupt triggers
-        // causeSquash in the effect-smol Stream runtime which throws a JS Error
-        // ("All fibers interrupted without error") that crashes the process.
+        // Don't explicitly interrupt the stream fiber — Queue.end produces a Done
+        // cause that toAsyncIterable handles gracefully (returns {done: true}).
+        // Queue.shutdown would produce an interrupt cause that causeSquash converts
+        // to a raw JS throw, crashing the process.
         context.streamFiber = undefined;
 
         // @effect-diagnostics-next-line tryCatchInEffectGen:off
@@ -2290,7 +2290,7 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
           existingResumeSessionId === undefined ? yield* Random.nextUUIDv4 : undefined;
         const sessionId = existingResumeSessionId ?? newSessionId;
 
-        const promptQueue = yield* Queue.unbounded<PromptQueueItem>();
+        const promptQueue = yield* Queue.unbounded<PromptQueueItem, Cause.Done>();
         const prompt = Stream.fromQueue(promptQueue).pipe(
           Stream.filter((item) => item.type === "message"),
           Stream.map((item) => item.message),
@@ -2924,7 +2924,7 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
             emitExitEvent: false,
           }),
         { discard: true },
-      ).pipe(Effect.tap(() => Queue.shutdown(runtimeEventQueue))),
+      ).pipe(Effect.tap(() => Queue.end(runtimeEventQueue))),
     );
 
     return {
