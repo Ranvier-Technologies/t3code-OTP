@@ -11,8 +11,7 @@ import {
   type RuntimeMode,
   type TurnId,
 } from "@t3tools/contracts";
-import { Cache, Cause, Duration, Effect, Equal, Layer, Option, Schema, Stream } from "effect";
-import * as Semaphore from "effect/Semaphore";
+import { Cache, Cause, Duration, Effect, Equal, Layer, Option, Schema, Semaphore, Stream } from "effect";
 import { makeDrainableWorker } from "@t3tools/shared/DrainableWorker";
 
 import { resolveThreadWorkspaceCwd } from "../../checkpointing/Utils.ts";
@@ -154,19 +153,13 @@ const make = Effect.gen(function* () {
 
   const threadModelSelections = new Map<string, ModelSelection>();
 
-  // Per-thread semaphore serializes all operations for the same thread
-  // while allowing different threads to be processed concurrently.
-  // Prevents H3 (concurrent dual-turn → double session start) and
-  // stop-during-turn races without head-of-line blocking across threads.
-  const threadSemaphores = new Map<string, Semaphore.Semaphore>();
-  const getThreadSemaphore = (threadId: ThreadId): Semaphore.Semaphore => {
-    let sem = threadSemaphores.get(threadId);
-    if (!sem) {
-      sem = Semaphore.makeUnsafe(1);
-      threadSemaphores.set(threadId, sem);
-    }
-    return sem;
-  };
+  // Per-thread mutex prevents TOCTOU races in ensureSessionForThread.
+  // With concurrency: 8, two events for the SAME thread could both read
+  // "no active session" and start duplicate provider sessions. The partitioned
+  // semaphore serializes event processing per thread while keeping independent
+  // threads fully concurrent. Uses Semaphore.makePartitionedUnsafe for
+  // automatic partition cleanup (from Devin PR #16).
+  const threadMutex = Semaphore.makePartitionedUnsafe<string>({ permits: 1 });
 
   // Tracks threads currently in the process of stopping. Prevents the
   // stop-during-turn race: between stopSession() completing and the
@@ -320,7 +313,7 @@ const make = Effect.gen(function* () {
           : (yield* providerService.getCapabilities(currentProvider)).sessionModelSwitch;
       const modelChanged =
         requestedModelSelection !== undefined &&
-        requestedModelSelection.model !== activeSession?.model;
+        requestedModelSelection.model !== thread.modelSelection.model;
       const shouldRestartForModelChange = modelChanged && sessionModelSwitch === "restart-session";
       const previousModelSelection = threadModelSelections.get(threadId);
       const shouldRestartForModelSelectionChange =
@@ -744,23 +737,19 @@ const make = Effect.gen(function* () {
     });
 
   const processDomainEventSafely = (event: ProviderIntentEvent) =>
-    Effect.gen(function* () {
-      const threadId = event.payload.threadId;
-      const sem = getThreadSemaphore(threadId);
-      yield* sem.withPermits(1)(
-        processDomainEvent(event).pipe(
-          Effect.catchCause((cause) => {
-            if (Cause.hasInterruptsOnly(cause)) {
-              return Effect.failCause(cause);
-            }
-            return Effect.logWarning("provider command reactor failed to process event", {
-              eventType: event.type,
-              cause: Cause.pretty(cause),
-            });
-          }),
-        ),
-      );
-    });
+    threadMutex.withPermits(event.payload.threadId, 1)(
+      processDomainEvent(event).pipe(
+        Effect.catchCause((cause) => {
+          if (Cause.hasInterruptsOnly(cause)) {
+            return Effect.failCause(cause);
+          }
+          return Effect.logWarning("provider command reactor failed to process event", {
+            eventType: event.type,
+            cause: Cause.pretty(cause),
+          });
+        }),
+      ),
+    );
 
   // Allow up to 8 concurrent event processors so independent thread operations
   // (session starts, turn dispatches) don't block each other. Events for the
