@@ -2173,16 +2173,11 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
 
         yield* Queue.shutdown(context.promptQueue);
 
-        const streamFiber = context.streamFiber;
+        // Don't explicitly interrupt the stream fiber — the promptQueue shutdown
+        // above will cause it to end naturally. Explicit Fiber.interrupt triggers
+        // causeSquash in the effect-smol Stream runtime which throws a JS Error
+        // ("All fibers interrupted without error") that crashes the process.
         context.streamFiber = undefined;
-        if (streamFiber && streamFiber.pollUnsafe() === undefined) {
-          // Fork the interrupt as a fully detached fiber (forkDetach ≡ forkDaemon
-          // in effect-smol) so the dying fiber's interruption cannot propagate
-          // back to the parent scope and crash the reactor worker.
-          // forkChild still keeps the fiber attached to the parent — forkDetach
-          // is fire-and-forget with zero parent coupling.
-          yield* Fiber.interrupt(streamFiber).pipe(Effect.forkDetach);
-        }
 
         // @effect-diagnostics-next-line tryCatchInEffectGen:off
         try {
