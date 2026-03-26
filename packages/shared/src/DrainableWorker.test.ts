@@ -53,4 +53,39 @@ describe("makeDrainableWorker", () => {
       }),
     ),
   );
+
+  it.live("processes items concurrently when concurrency > 1", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const started: string[] = [];
+        const aStarted = yield* Deferred.make<void>();
+        const bStarted = yield* Deferred.make<void>();
+        const releaseAll = yield* Deferred.make<void>();
+
+        const worker = yield* makeDrainableWorker(
+          (item: string) =>
+            Effect.gen(function* () {
+              started.push(item);
+              if (item === "a") yield* Deferred.succeed(aStarted, undefined).pipe(Effect.orDie);
+              if (item === "b") yield* Deferred.succeed(bStarted, undefined).pipe(Effect.orDie);
+              yield* Deferred.await(releaseAll);
+            }),
+          { concurrency: 4 },
+        );
+
+        yield* worker.enqueue("a");
+        yield* worker.enqueue("b");
+
+        // Both should start concurrently — with concurrency=1 "b" would be blocked
+        yield* Deferred.await(aStarted);
+        yield* Deferred.await(bStarted);
+
+        expect(started).toContain("a");
+        expect(started).toContain("b");
+
+        yield* Deferred.succeed(releaseAll, undefined);
+        yield* worker.drain;
+      }),
+    ),
+  );
 });

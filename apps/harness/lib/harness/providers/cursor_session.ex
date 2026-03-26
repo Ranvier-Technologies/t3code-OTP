@@ -102,6 +102,7 @@ defmodule Harness.Providers.CursorSession do
     })
 
     emit_event(state, :session, "session/ready", %{})
+    persist_binding(state)
 
     {:ok, state}
   end
@@ -820,6 +821,11 @@ defmodule Harness.Providers.CursorSession do
       "cursorChatId" => state.resume_session_id || state.session_id,
       "turnCount" => length(state.turns)
     })
+  end
+
+  defp persist_binding(state) do
+    cursor_json = build_resume_cursor(state)
+    Harness.Storage.upsert_binding(state.thread_id, state.provider, cursor_json)
   end
 
   defp split_lines(buffer) do
