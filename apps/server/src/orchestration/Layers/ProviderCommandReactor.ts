@@ -773,7 +773,11 @@ const make = Effect.gen(function* () {
       }),
     );
 
-  const worker = yield* makeDrainableWorker(processDomainEventSafely);
+  // Allow up to 8 concurrent event processors so independent thread operations
+  // (session starts, turn dispatches) don't block each other. Events for the
+  // same thread are still safe: ensureSessionForThread and sendTurnForThread
+  // operate on per-thread state and the provider layer serializes per-session.
+  const worker = yield* makeDrainableWorker(processDomainEventSafely, { concurrency: 8 });
 
   const start: ProviderCommandReactorShape["start"] = Effect.forkScoped(
     Stream.runForEach(orchestrationEngine.streamDomainEvents, (event) => {

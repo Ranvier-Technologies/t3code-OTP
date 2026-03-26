@@ -398,10 +398,10 @@ defmodule Harness.StorageTest do
     r2 = SessionManager.maybe_inject_resume_cursor(%{}, "t2", "cursor")
     r3 = SessionManager.maybe_inject_resume_cursor(%{}, "t3", "opencode")
 
-    # Codex cursor normalized to raw string; others kept as maps
+    # Codex cursor normalized to raw string; Cursor/OpenCode re-encoded as JSON strings
     assert r1["resumeCursor"] == "codex-1"
-    assert r2["resumeCursor"] == %{"cursorChatId" => "cursor-1"}
-    assert r3["resumeCursor"] == %{"sessionId" => "oc-1"}
+    assert r2["resumeCursor"] == Jason.encode!(%{"cursorChatId" => "cursor-1"})
+    assert r3["resumeCursor"] == Jason.encode!(%{"sessionId" => "oc-1"})
   end
 
   test "multi-session: same thread_id with different provider ignores stale binding" do

@@ -33,12 +33,15 @@ export interface DrainableWorker<A> {
  * the scope closes. A finalizer shuts down the queue.
  *
  * @param process - The effect to run for each queued item.
+ * @param options.concurrency - Number of parallel consumer fibers (default 1).
  * @returns A `DrainableWorker` with `queue` and `drain`.
  */
 export const makeDrainableWorker = <A, E, R>(
   process: (item: A) => Effect.Effect<void, E, R>,
+  options?: { readonly concurrency?: number },
 ): Effect.Effect<DrainableWorker<A>, never, Scope.Scope | R> =>
   Effect.gen(function* () {
+    const concurrency = Math.max(1, options?.concurrency ?? 1);
     const queue = yield* Queue.unbounded<A>();
     const initialIdle = yield* Deferred.make<void>();
     yield* Deferred.succeed(initialIdle, undefined).pipe(Effect.orDie);
@@ -64,13 +67,15 @@ export const makeDrainableWorker = <A, E, R>(
       ),
     );
 
-    yield* Effect.forkScoped(
-      Effect.forever(
-        Queue.take(queue).pipe(
-          Effect.flatMap((item) => process(item).pipe(Effect.ensuring(finishOne))),
-        ),
+    const consumerFiber = Effect.forever(
+      Queue.take(queue).pipe(
+        Effect.flatMap((item) => process(item).pipe(Effect.ensuring(finishOne))),
       ),
     );
+
+    for (let i = 0; i < concurrency; i++) {
+      yield* Effect.forkScoped(consumerFiber);
+    }
 
     const enqueue: DrainableWorker<A>["enqueue"] = (item) =>
       Effect.gen(function* () {
