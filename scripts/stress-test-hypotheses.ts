@@ -129,8 +129,7 @@ class T3Client {
         if (!id) return;
 
         if (id === "unknown" && msg.error) {
-          const errMsg =
-            (msg.error as { message?: string }).message ?? JSON.stringify(msg.error);
+          const errMsg = (msg.error as { message?: string }).message ?? JSON.stringify(msg.error);
           for (const [, p] of this.pending) {
             p.reject(new Error(`Schema error: ${errMsg}`));
           }
@@ -259,9 +258,7 @@ async function testH1(client: T3Client, projectId: string): Promise<HypothesisRe
     ) {
       execApprovalCount++;
       approvalTimestamps.push(Date.now());
-      result.evidence.push(
-        `exec_approval_request at turn ~${turnsCompleted}, t=${ts()}`,
-      );
+      result.evidence.push(`exec_approval_request at turn ~${turnsCompleted}, t=${ts()}`);
     }
 
     // Look for compact-related events in the raw notifications
@@ -944,14 +941,11 @@ async function main() {
     ok("Connected to Node server");
   } catch (e) {
     fail(`Cannot connect to Node server on port ${NODE_PORT}: ${e}`);
-    console.error(
-      "\nMake sure the full stack is running: pixi run dev\n",
-    );
+    console.error("\nMake sure the full stack is running: pixi run dev\n");
     process.exit(2);
   }
 
-  const projectId =
-    (welcomeData.bootstrapProjectId as string) ?? `hyp-project-${RUN_ID}`;
+  const projectId = (welcomeData.bootstrapProjectId as string) ?? `hyp-project-${RUN_ID}`;
 
   if (!welcomeData.bootstrapProjectId) {
     try {
