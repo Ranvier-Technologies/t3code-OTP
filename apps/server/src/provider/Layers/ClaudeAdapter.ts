@@ -2176,9 +2176,12 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
         const streamFiber = context.streamFiber;
         context.streamFiber = undefined;
         if (streamFiber && streamFiber.pollUnsafe() === undefined) {
-          // Fork the interrupt as a child fiber so we don't join the dying
-          // fiber (which would propagate the interruption up and crash the server).
-          yield* Fiber.interrupt(streamFiber).pipe(Effect.forkChild);
+          // Fork the interrupt as a fully detached fiber (forkDetach ≡ forkDaemon
+          // in effect-smol) so the dying fiber's interruption cannot propagate
+          // back to the parent scope and crash the reactor worker.
+          // forkChild still keeps the fiber attached to the parent — forkDetach
+          // is fire-and-forget with zero parent coupling.
+          yield* Fiber.interrupt(streamFiber).pipe(Effect.forkDetach);
         }
 
         // @effect-diagnostics-next-line tryCatchInEffectGen:off
