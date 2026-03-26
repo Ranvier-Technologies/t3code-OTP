@@ -153,6 +153,13 @@ const make = Effect.gen(function* () {
 
   const threadModelSelections = new Map<string, ModelSelection>();
 
+  // Tracks threads currently in the process of stopping. Prevents the
+  // stop-during-turn race: between stopSession() completing and the
+  // "stopped" session-set event being projected, a queued turn-start
+  // could read stale state and dispatch to a dying session.
+  // Mirrors Codex's `pending_thread_unloads` pattern.
+  const stoppingThreads = new Set<ThreadId>();
+
   const appendProviderFailureActivity = (input: {
     readonly threadId: ThreadId;
     readonly kind:
@@ -211,6 +218,14 @@ const make = Effect.gen(function* () {
       readonly modelSelection?: ModelSelection;
     },
   ) {
+    if (stoppingThreads.has(threadId)) {
+      return yield* new ProviderAdapterRequestError({
+        provider: "codex",
+        method: "ensureSessionForThread",
+        detail: `Thread '${threadId}' is currently stopping; retry after stop completes.`,
+      });
+    }
+
     const readModel = yield* orchestrationEngine.getReadModel();
     const thread = readModel.threads.find((entry) => entry.id === threadId);
     if (!thread) {
@@ -639,27 +654,44 @@ const make = Effect.gen(function* () {
     }
 
     const now = event.payload.createdAt;
-    if (thread.session && thread.session.status !== "stopped") {
-      // Run stop as uninterruptible to prevent Claude SDK fiber interruptions
-      // from propagating up and killing the reactor worker.
-      yield* providerService
-        .stopSession({ threadId: thread.id })
-        .pipe(Effect.uninterruptible, Effect.ignore);
-    }
+    stoppingThreads.add(thread.id);
 
-    yield* setThreadSession({
-      threadId: thread.id,
-      session: {
+    try {
+      if (thread.session && thread.session.status !== "stopped") {
+        // Run stop as uninterruptible with a 15s timeout. If the provider
+        // hangs (e.g., stuck GenServer), we proceed to mark the session
+        // stopped rather than blocking the reactor worker indefinitely.
+        yield* providerService
+          .stopSession({ threadId: thread.id })
+          .pipe(
+            Effect.timeout(Duration.seconds(15)),
+            Effect.uninterruptible,
+            Effect.tapError((error) =>
+              Effect.logWarning("stopSession timed out or failed", {
+                threadId: thread.id,
+                error: String(error),
+              }),
+            ),
+            Effect.ignore,
+          );
+      }
+
+      yield* setThreadSession({
         threadId: thread.id,
-        status: "stopped",
-        providerName: thread.session?.providerName ?? null,
-        runtimeMode: thread.session?.runtimeMode ?? DEFAULT_RUNTIME_MODE,
-        activeTurnId: null,
-        lastError: thread.session?.lastError ?? null,
-        updatedAt: now,
-      },
-      createdAt: now,
-    });
+        session: {
+          threadId: thread.id,
+          status: "stopped",
+          providerName: thread.session?.providerName ?? null,
+          runtimeMode: thread.session?.runtimeMode ?? DEFAULT_RUNTIME_MODE,
+          activeTurnId: null,
+          lastError: thread.session?.lastError ?? null,
+          updatedAt: now,
+        },
+        createdAt: now,
+      });
+    } finally {
+      stoppingThreads.delete(thread.id);
+    }
   });
 
   const processDomainEvent = (event: ProviderIntentEvent) =>
