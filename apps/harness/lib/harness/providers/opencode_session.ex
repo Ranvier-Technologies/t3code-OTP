@@ -151,6 +151,7 @@ defmodule Harness.Providers.OpenCodeSession do
             })
 
             emit_event(state, :session, "session/ready", %{})
+            persist_binding(state)
             # Notify any callers waiting for ready
             Enum.each(state.ready_waiters, &GenServer.reply(&1, :ok))
             state = %{state | ready_waiters: []}
@@ -1211,6 +1212,17 @@ defmodule Harness.Providers.OpenCodeSession do
 
   defp turn_id_from_state(%{turn_state: %{turn_id: turn_id}}), do: turn_id
   defp turn_id_from_state(_), do: nil
+
+  defp persist_binding(state) do
+    # Only persist durable identifiers — port is ephemeral and stale after restart
+    cursor_json =
+      Jason.encode!(%{
+        "threadId" => state.thread_id,
+        "sessionId" => state.opencode_session_id
+      })
+
+    Harness.Storage.upsert_binding(state.thread_id, state.provider, cursor_json)
+  end
 
   defp emit_event(state, kind, method, payload) do
     event =

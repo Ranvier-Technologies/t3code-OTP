@@ -287,8 +287,11 @@ defmodule Harness.SessionManager do
     end
   end
 
-  # Codex stores {"threadId": "..."} but CodexSession expects the raw string.
-  # Other providers store richer objects their session modules know how to parse.
+  # Codex stores {"threadId": "..."} — CodexSession expects the raw string.
+  # Cursor/OpenCode store richer objects — their session modules expect a JSON string
+  # to decode themselves, so re-encode the decoded map back to JSON.
+  defp normalize_resume_cursor(%{"cursorChatId" => _} = cursor), do: Jason.encode!(cursor)
+  defp normalize_resume_cursor(%{"sessionId" => _} = cursor), do: Jason.encode!(cursor)
   defp normalize_resume_cursor(%{"threadId" => tid}) when is_binary(tid), do: tid
   defp normalize_resume_cursor(cursor), do: cursor
 
