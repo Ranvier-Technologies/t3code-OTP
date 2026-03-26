@@ -13,7 +13,7 @@ import {
   type RuntimeMode,
   type TurnId,
 } from "@t3tools/contracts";
-import { Cache, Cause, Duration, Effect, Layer, Option, Schema, Stream } from "effect";
+import { Cache, Cause, Duration, Effect, Layer, Option, Schema, Semaphore, Stream } from "effect";
 import { makeDrainableWorker } from "@t3tools/shared/DrainableWorker";
 
 import { resolveThreadWorkspaceCwd } from "../../checkpointing/Utils.ts";
@@ -764,23 +764,34 @@ const make = Effect.gen(function* () {
       }
     });
 
+  // Per-thread mutex prevents TOCTOU races in ensureSessionForThread.
+  // With concurrency: 8, two events for the SAME thread could both read
+  // "no active session" and start duplicate provider sessions. The partitioned
+  // semaphore serializes event processing per thread while keeping independent
+  // threads fully concurrent.
+  const threadMutex = Semaphore.makePartitionedUnsafe<string>({ permits: 1 });
+
   const processDomainEventSafely = (event: ProviderIntentEvent) =>
-    processDomainEvent(event).pipe(
-      Effect.catchCause((cause) => {
-        if (Cause.hasInterruptsOnly(cause)) {
-          return Effect.failCause(cause);
-        }
-        return Effect.logWarning("provider command reactor failed to process event", {
-          eventType: event.type,
-          cause: Cause.pretty(cause),
-        });
-      }),
+    threadMutex.withPermits(
+      event.payload.threadId,
+      1,
+    )(
+      processDomainEvent(event).pipe(
+        Effect.catchCause((cause) => {
+          if (Cause.hasInterruptsOnly(cause)) {
+            return Effect.failCause(cause);
+          }
+          return Effect.logWarning("provider command reactor failed to process event", {
+            eventType: event.type,
+            cause: Cause.pretty(cause),
+          });
+        }),
+      ),
     );
 
   // Allow up to 8 concurrent event processors so independent thread operations
   // (session starts, turn dispatches) don't block each other. Events for the
-  // same thread are still safe: ensureSessionForThread and sendTurnForThread
-  // operate on per-thread state and the provider layer serializes per-session.
+  // same thread are serialized by threadMutex above.
   const worker = yield* makeDrainableWorker(processDomainEventSafely, { concurrency: 8 });
 
   const start: ProviderCommandReactorShape["start"] = Effect.forkScoped(
