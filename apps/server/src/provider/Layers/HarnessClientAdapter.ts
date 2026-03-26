@@ -25,6 +25,7 @@ import {
   type ProviderRequestKind,
   type ProviderRuntimeEvent,
   type ProviderSession,
+  type ThreadTokenUsageSnapshot,
   type ProviderTurnStartResult,
   type ProviderUserInputAnswers,
   type ItemLifecyclePayload,
@@ -574,7 +575,7 @@ function mapHarnessEventToRuntimeEvents(
       {
         ...runtimeEventBase(event, canonicalThreadId),
         type: "thread.token-usage.updated",
-        payload: { usage: event.payload ?? {} },
+        payload: { usage: (event.payload ?? {}) as ThreadTokenUsageSnapshot },
       },
     ];
   }
@@ -637,7 +638,7 @@ function mapHarnessEventToRuntimeEvents(
       {
         ...runtimeEventBase(event, canonicalThreadId),
         type: "thread.token-usage.updated",
-        payload: { usage: event.payload ?? {} },
+        payload: { usage: (event.payload ?? {}) as ThreadTokenUsageSnapshot },
       },
     ];
   }
@@ -1062,7 +1063,9 @@ export function makeHarnessClientAdapterLive(options?: HarnessClientAdapterLiveO
               threadId: input.threadId,
               provider: input.provider ?? DEFAULT_PROVIDER,
               ...(input.cwd !== undefined ? { cwd: input.cwd } : {}),
-              ...(input.model !== undefined ? { model: input.model } : {}),
+              ...(input.modelSelection?.model !== undefined
+                ? { model: input.modelSelection.model }
+                : {}),
               runtimeMode: input.runtimeMode,
               ...(input.resumeCursor !== undefined ? { resumeCursor: input.resumeCursor } : {}),
             }),
@@ -1088,7 +1091,9 @@ export function makeHarnessClientAdapterLive(options?: HarnessClientAdapterLiveO
           try: () =>
             manager.sendTurn(input.threadId, {
               ...(input.input !== undefined ? { input: input.input } : {}),
-              ...(input.model !== undefined ? { model: input.model } : {}),
+              ...(input.modelSelection?.model !== undefined
+                ? { model: input.modelSelection.model }
+                : {}),
             }),
           catch: (cause) => toRequestError(input.threadId, "turn/start", cause),
         }).pipe(Effect.map((raw) => coerceTurnStartResult(raw, input.threadId)));

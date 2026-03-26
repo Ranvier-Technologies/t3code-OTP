@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import { TrimmedNonEmptyString } from "./baseSchemas";
 import type { ProviderKind } from "./orchestration";
 
 export const CODEX_REASONING_EFFORT_OPTIONS = ["xhigh", "high", "medium", "low"] as const;
@@ -26,44 +27,39 @@ export const ProviderModelOptions = Schema.Struct({
 });
 export type ProviderModelOptions = typeof ProviderModelOptions.Type;
 
-type ModelOption = {
-  readonly slug: string;
-  readonly name: string;
-};
+export const EffortOption = Schema.Struct({
+  value: TrimmedNonEmptyString,
+  label: TrimmedNonEmptyString,
+  isDefault: Schema.optional(Schema.Boolean),
+});
+export type EffortOption = typeof EffortOption.Type;
 
-export const MODEL_OPTIONS_BY_PROVIDER = {
-  codex: [
-    { slug: "gpt-5.4", name: "GPT-5.4" },
-    { slug: "gpt-5.4-mini", name: "GPT-5.4 Mini" },
-    { slug: "gpt-5.3-codex", name: "GPT-5.3 Codex" },
-    { slug: "gpt-5.3-codex-spark", name: "GPT-5.3 Codex Spark" },
-    { slug: "gpt-5.2-codex", name: "GPT-5.2 Codex" },
-    { slug: "gpt-5.2", name: "GPT-5.2" },
-  ],
-  claudeAgent: [
-    { slug: "claude-opus-4-6", name: "Claude Opus 4.6" },
-    { slug: "claude-sonnet-4-6", name: "Claude Sonnet 4.6" },
-    { slug: "claude-haiku-4-5", name: "Claude Haiku 4.5" },
-  ],
-  cursor: [{ slug: "auto", name: "Auto (account default)" }],
-  opencode: [{ slug: "auto", name: "Auto (account default)" }],
-} as const satisfies Record<ProviderKind, readonly ModelOption[]>;
-export type ModelOptionsByProvider = typeof MODEL_OPTIONS_BY_PROVIDER;
+export const ModelCapabilities = Schema.Struct({
+  reasoningEffortLevels: Schema.Array(EffortOption),
+  supportsFastMode: Schema.Boolean,
+  supportsThinkingToggle: Schema.Boolean,
+  promptInjectedEffortLevels: Schema.Array(TrimmedNonEmptyString),
+});
+export type ModelCapabilities = typeof ModelCapabilities.Type;
 
-type BuiltInModelSlug = (typeof MODEL_OPTIONS_BY_PROVIDER)[ProviderKind][number]["slug"];
-export type ModelSlug = BuiltInModelSlug | (string & {});
+export type ModelSlug = string & {};
 
 export const DEFAULT_MODEL_BY_PROVIDER: Record<ProviderKind, ModelSlug> = {
   codex: "gpt-5.4",
   claudeAgent: "claude-sonnet-4-6",
-  cursor: "auto",
-  opencode: "auto",
+  cursor: "cursor-default",
+  opencode: "opencode-default",
 };
 
-// Backward compatibility for existing Codex-only call sites.
-export const MODEL_OPTIONS = MODEL_OPTIONS_BY_PROVIDER.codex;
 export const DEFAULT_MODEL = DEFAULT_MODEL_BY_PROVIDER.codex;
-export const DEFAULT_GIT_TEXT_GENERATION_MODEL = "gpt-5.4-mini" as const;
+
+/** Per-provider text generation model defaults. */
+export const DEFAULT_GIT_TEXT_GENERATION_MODEL_BY_PROVIDER: Record<ProviderKind, string> = {
+  codex: "gpt-5.4-mini",
+  claudeAgent: "claude-haiku-4-5",
+  cursor: "cursor-default",
+  opencode: "opencode-default",
+};
 
 export const MODEL_SLUG_ALIASES_BY_PROVIDER: Record<ProviderKind, Record<string, ModelSlug>> = {
   codex: {
@@ -91,21 +87,11 @@ export const MODEL_SLUG_ALIASES_BY_PROVIDER: Record<ProviderKind, Record<string,
   opencode: {},
 };
 
-export const REASONING_EFFORT_OPTIONS_BY_PROVIDER = {
-  codex: CODEX_REASONING_EFFORT_OPTIONS,
-  claudeAgent: CLAUDE_CODE_EFFORT_OPTIONS,
-  cursor: [] as const,
-  opencode: [] as const,
-} as const satisfies Record<ProviderKind, readonly ProviderReasoningEffort[]>;
+// ── Provider display names ────────────────────────────────────────────
 
-// cursor and opencode don't support reasoning effort configuration,
-// so their defaults are undefined. Consumers must handle the undefined case.
-export const DEFAULT_REASONING_EFFORT_BY_PROVIDER: Record<
-  ProviderKind,
-  ProviderReasoningEffort | undefined
-> = {
-  codex: "high",
-  claudeAgent: "high",
-  cursor: undefined,
-  opencode: undefined,
+export const PROVIDER_DISPLAY_NAMES: Record<ProviderKind, string> = {
+  codex: "Codex",
+  claudeAgent: "Claude",
+  cursor: "Cursor",
+  opencode: "OpenCode",
 };

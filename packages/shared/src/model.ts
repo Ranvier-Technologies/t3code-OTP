@@ -1,63 +1,31 @@
 import {
-  CLAUDE_CODE_EFFORT_OPTIONS,
-  CODEX_REASONING_EFFORT_OPTIONS,
   DEFAULT_MODEL_BY_PROVIDER,
-  DEFAULT_REASONING_EFFORT_BY_PROVIDER,
-  MODEL_OPTIONS_BY_PROVIDER,
   MODEL_SLUG_ALIASES_BY_PROVIDER,
-  REASONING_EFFORT_OPTIONS_BY_PROVIDER,
-  type ClaudeModelOptions,
   type ClaudeCodeEffort,
-  type CodexModelOptions,
-  type CodexReasoningEffort,
+  type ModelCapabilities,
   type ModelSlug,
-  type ProviderReasoningEffort,
   type ProviderKind,
 } from "@t3tools/contracts";
-
-const MODEL_SLUG_SET_BY_PROVIDER: Record<ProviderKind, ReadonlySet<ModelSlug>> = {
-  claudeAgent: new Set(MODEL_OPTIONS_BY_PROVIDER.claudeAgent.map((option) => option.slug)),
-  codex: new Set(MODEL_OPTIONS_BY_PROVIDER.codex.map((option) => option.slug)),
-  cursor: new Set(MODEL_OPTIONS_BY_PROVIDER.cursor.map((option) => option.slug)),
-  opencode: new Set(MODEL_OPTIONS_BY_PROVIDER.opencode.map((option) => option.slug)),
-};
-
-const CLAUDE_OPUS_4_6_MODEL = "claude-opus-4-6";
-const CLAUDE_SONNET_4_6_MODEL = "claude-sonnet-4-6";
-const CLAUDE_HAIKU_4_5_MODEL = "claude-haiku-4-5";
 
 export interface SelectableModelOption {
   slug: string;
   name: string;
 }
 
-export function getModelOptions(provider: ProviderKind = "codex") {
-  return MODEL_OPTIONS_BY_PROVIDER[provider];
-}
-
 export function getDefaultModel(provider: ProviderKind = "codex"): ModelSlug {
   return DEFAULT_MODEL_BY_PROVIDER[provider];
 }
 
-export function supportsClaudeFastMode(model: string | null | undefined): boolean {
-  return normalizeModelSlug(model, "claudeAgent") === CLAUDE_OPUS_4_6_MODEL;
+// ── Effort helpers ────────────────────────────────────────────────────
+
+/** Check whether a capabilities object includes a given effort value. */
+export function hasEffortLevel(caps: ModelCapabilities, value: string): boolean {
+  return caps.reasoningEffortLevels.some((l) => l.value === value);
 }
 
-export function supportsClaudeAdaptiveReasoning(model: string | null | undefined): boolean {
-  const normalized = normalizeModelSlug(model, "claudeAgent");
-  return normalized === CLAUDE_OPUS_4_6_MODEL || normalized === CLAUDE_SONNET_4_6_MODEL;
-}
-
-export function supportsClaudeMaxEffort(model: string | null | undefined): boolean {
-  return normalizeModelSlug(model, "claudeAgent") === CLAUDE_OPUS_4_6_MODEL;
-}
-
-export function supportsClaudeUltrathinkKeyword(model: string | null | undefined): boolean {
-  return supportsClaudeAdaptiveReasoning(model);
-}
-
-export function supportsClaudeThinkingToggle(model: string | null | undefined): boolean {
-  return normalizeModelSlug(model, "claudeAgent") === CLAUDE_HAIKU_4_5_MODEL;
+/** Return the default effort value for a capabilities object, or null if none. */
+export function getDefaultEffort(caps: ModelCapabilities): string | null {
+  return caps.reasoningEffortLevels.find((l) => l.isDefault)?.value ?? null;
 }
 
 export function isClaudeUltrathinkPrompt(text: string | null | undefined): boolean {
@@ -125,16 +93,7 @@ export function resolveModelSlug(
   if (!normalized) {
     return DEFAULT_MODEL_BY_PROVIDER[provider];
   }
-
-  // Cursor and OpenCode use dynamic model discovery — pass through any
-  // normalized slug without falling back to the default.
-  if (provider === "cursor" || provider === "opencode") {
-    return normalized;
-  }
-
-  return MODEL_SLUG_SET_BY_PROVIDER[provider].has(normalized)
-    ? normalized
-    : DEFAULT_MODEL_BY_PROVIDER[provider];
+  return normalized;
 }
 
 export function resolveModelSlugForProvider(
@@ -144,146 +103,11 @@ export function resolveModelSlugForProvider(
   return resolveModelSlug(model, provider);
 }
 
-export function inferProviderForModel(
-  model: string | null | undefined,
-  fallback: ProviderKind = "codex",
-): ProviderKind {
-  const normalizedClaude = normalizeModelSlug(model, "claudeAgent");
-  if (normalizedClaude && MODEL_SLUG_SET_BY_PROVIDER.claudeAgent.has(normalizedClaude)) {
-    return "claudeAgent";
-  }
-
-  const normalizedCodex = normalizeModelSlug(model, "codex");
-  if (normalizedCodex && MODEL_SLUG_SET_BY_PROVIDER.codex.has(normalizedCodex)) {
-    return "codex";
-  }
-
-  const normalizedCursor = normalizeModelSlug(model, "cursor");
-  if (normalizedCursor && MODEL_SLUG_SET_BY_PROVIDER.cursor.has(normalizedCursor)) {
-    return "cursor";
-  }
-
-  const normalizedOpencode = normalizeModelSlug(model, "opencode");
-  if (normalizedOpencode && MODEL_SLUG_SET_BY_PROVIDER.opencode.has(normalizedOpencode)) {
-    return "opencode";
-  }
-
-  return typeof model === "string" && model.trim().startsWith("claude-") ? "claudeAgent" : fallback;
-}
-
-export function getReasoningEffortOptions(provider: "codex"): ReadonlyArray<CodexReasoningEffort>;
-export function getReasoningEffortOptions(
-  provider: "claudeAgent",
-  model?: string | null | undefined,
-): ReadonlyArray<ClaudeCodeEffort>;
-export function getReasoningEffortOptions(
-  provider?: ProviderKind,
-  model?: string | null | undefined,
-): ReadonlyArray<ProviderReasoningEffort>;
-export function getReasoningEffortOptions(
-  provider: ProviderKind = "codex",
-  model?: string | null | undefined,
-): ReadonlyArray<ProviderReasoningEffort> {
-  if (provider === "claudeAgent") {
-    if (supportsClaudeMaxEffort(model)) {
-      return ["low", "medium", "high", "max", "ultrathink"];
-    }
-    if (supportsClaudeAdaptiveReasoning(model)) {
-      return ["low", "medium", "high", "ultrathink"];
-    }
-    return [];
-  }
-  return REASONING_EFFORT_OPTIONS_BY_PROVIDER[provider];
-}
-
-export function getDefaultReasoningEffort(provider: "codex"): CodexReasoningEffort;
-export function getDefaultReasoningEffort(provider: "claudeAgent"): ClaudeCodeEffort;
-export function getDefaultReasoningEffort(
-  provider?: ProviderKind,
-): ProviderReasoningEffort | undefined;
-export function getDefaultReasoningEffort(
-  provider: ProviderKind = "codex",
-): ProviderReasoningEffort | undefined {
-  return DEFAULT_REASONING_EFFORT_BY_PROVIDER[provider];
-}
-
-export function resolveReasoningEffortForProvider(
-  provider: "codex",
-  effort: string | null | undefined,
-): CodexReasoningEffort | null;
-export function resolveReasoningEffortForProvider(
-  provider: "claudeAgent",
-  effort: string | null | undefined,
-): ClaudeCodeEffort | null;
-export function resolveReasoningEffortForProvider(
-  provider: ProviderKind,
-  effort: string | null | undefined,
-): ProviderReasoningEffort | null;
-export function resolveReasoningEffortForProvider(
-  provider: ProviderKind,
-  effort: string | null | undefined,
-): ProviderReasoningEffort | null {
-  if (typeof effort !== "string") {
-    return null;
-  }
-
-  const trimmed = effort.trim();
-  if (!trimmed) {
-    return null;
-  }
-
-  const options = REASONING_EFFORT_OPTIONS_BY_PROVIDER[provider] as ReadonlyArray<string>;
-  return options.includes(trimmed) ? (trimmed as ProviderReasoningEffort) : null;
-}
-
-export function getEffectiveClaudeCodeEffort(
-  effort: ClaudeCodeEffort | null | undefined,
-): Exclude<ClaudeCodeEffort, "ultrathink"> | null {
-  if (!effort) {
-    return null;
-  }
-  return effort === "ultrathink" ? null : effort;
-}
-
-export function normalizeCodexModelOptions(
-  modelOptions: CodexModelOptions | null | undefined,
-): CodexModelOptions | undefined {
-  const defaultReasoningEffort = getDefaultReasoningEffort("codex");
-  const reasoningEffort =
-    resolveReasoningEffortForProvider("codex", modelOptions?.reasoningEffort) ??
-    defaultReasoningEffort;
-  const fastModeEnabled = modelOptions?.fastMode === true;
-  const nextOptions: CodexModelOptions = {
-    ...(reasoningEffort !== defaultReasoningEffort ? { reasoningEffort } : {}),
-    ...(fastModeEnabled ? { fastMode: true } : {}),
-  };
-  return Object.keys(nextOptions).length > 0 ? nextOptions : undefined;
-}
-
-export function normalizeClaudeModelOptions(
-  model: string | null | undefined,
-  modelOptions: ClaudeModelOptions | null | undefined,
-): ClaudeModelOptions | undefined {
-  const reasoningOptions = getReasoningEffortOptions("claudeAgent", model);
-  const defaultReasoningEffort = getDefaultReasoningEffort("claudeAgent");
-  const resolvedEffort = resolveReasoningEffortForProvider("claudeAgent", modelOptions?.effort);
-  const effort =
-    resolvedEffort &&
-    resolvedEffort !== "ultrathink" &&
-    reasoningOptions.includes(resolvedEffort) &&
-    resolvedEffort !== defaultReasoningEffort
-      ? resolvedEffort
-      : undefined;
-  const thinking =
-    supportsClaudeThinkingToggle(model) && modelOptions?.thinking === false ? false : undefined;
-  const fastMode =
-    supportsClaudeFastMode(model) && modelOptions?.fastMode === true ? true : undefined;
-  const nextOptions: ClaudeModelOptions = {
-    ...(thinking === false ? { thinking: false } : {}),
-    ...(effort ? { effort } : {}),
-    ...(fastMode ? { fastMode: true } : {}),
-  };
-  return Object.keys(nextOptions).length > 0 ? nextOptions : undefined;
+/** Trim a string, returning null for empty/missing values. */
+export function trimOrNull<T extends string>(value: T | null | undefined): T | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim() as T;
+  return trimmed || null;
 }
 
 export function applyClaudePromptEffortPrefix(
@@ -302,5 +126,3 @@ export function applyClaudePromptEffortPrefix(
   }
   return `Ultrathink:\n${trimmed}`;
 }
-
-export { CLAUDE_CODE_EFFORT_OPTIONS, CODEX_REASONING_EFFORT_OPTIONS };

@@ -11,7 +11,6 @@ import { ChildProcess } from "effect/unstable/process";
 
 const BASE_SERVER_PORT = 3773;
 const BASE_WEB_PORT = 5733;
-const BASE_HARNESS_PORT = 4383;
 const MAX_HASH_OFFSET = 3000;
 const MAX_PORT = 65535;
 
@@ -147,38 +146,42 @@ export function createDevRunnerEnv({
   return Effect.gen(function* () {
     const serverPort = port ?? BASE_SERVER_PORT + serverOffset;
     const webPort = BASE_WEB_PORT + webOffset;
-    const harnessPort = BASE_HARNESS_PORT + serverOffset;
     const resolvedBaseDir = yield* resolveBaseDir(t3Home);
+    const isDesktopMode = mode === "dev:desktop";
 
     const output: NodeJS.ProcessEnv = {
       ...baseEnv,
-      T3CODE_PORT: String(serverPort),
       PORT: String(webPort),
       ELECTRON_RENDERER_PORT: String(webPort),
-      VITE_WS_URL: `ws://localhost:${serverPort}`,
       VITE_DEV_SERVER_URL: devUrl?.toString() ?? `http://localhost:${webPort}`,
       T3CODE_HOME: resolvedBaseDir,
     };
 
-    // Elixir HarnessService — opt-in via T3CODE_HARNESS_PORT env var
-    if (baseEnv.T3CODE_HARNESS_PORT !== undefined) {
-      output.T3CODE_HARNESS_PORT = String(harnessPort);
-      output.T3CODE_HARNESS_SECRET = baseEnv.T3CODE_HARNESS_SECRET ?? "dev-harness-secret";
+    if (!isDesktopMode) {
+      output.T3CODE_PORT = String(serverPort);
+      output.VITE_WS_URL = `ws://localhost:${serverPort}`;
+    } else {
+      delete output.T3CODE_PORT;
+      delete output.VITE_WS_URL;
+      delete output.T3CODE_AUTH_TOKEN;
+      delete output.T3CODE_MODE;
+      delete output.T3CODE_NO_BROWSER;
+      delete output.T3CODE_HOST;
     }
 
-    if (host !== undefined) {
+    if (!isDesktopMode && host !== undefined) {
       output.T3CODE_HOST = host;
     }
 
-    if (authToken !== undefined) {
+    if (!isDesktopMode && authToken !== undefined) {
       output.T3CODE_AUTH_TOKEN = authToken;
-    } else {
+    } else if (!isDesktopMode) {
       delete output.T3CODE_AUTH_TOKEN;
     }
 
-    if (noBrowser !== undefined) {
+    if (!isDesktopMode && noBrowser !== undefined) {
       output.T3CODE_NO_BROWSER = noBrowser ? "1" : "0";
-    } else {
+    } else if (!isDesktopMode) {
       delete output.T3CODE_NO_BROWSER;
     }
 
@@ -201,6 +204,10 @@ export function createDevRunnerEnv({
 
     if (mode === "dev:server" || mode === "dev:web") {
       output.T3CODE_MODE = "web";
+      delete output.T3CODE_DESKTOP_WS_URL;
+    }
+
+    if (isDesktopMode) {
       delete output.T3CODE_DESKTOP_WS_URL;
     }
 

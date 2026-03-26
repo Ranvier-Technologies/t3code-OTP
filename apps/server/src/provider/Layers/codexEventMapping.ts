@@ -13,6 +13,7 @@ import {
   type ProviderEvent,
   type ProviderRuntimeEvent,
   type ProviderUserInputAnswers,
+  type ThreadTokenUsageSnapshot,
   RuntimeItemId,
   RuntimeRequestId,
   RuntimeTaskId,
@@ -716,7 +717,7 @@ export function mapToRuntimeEvents(
         type: "thread.token-usage.updated",
         ...runtimeEventBase(event, canonicalThreadId),
         payload: {
-          usage: event.payload ?? {},
+          usage: (event.payload ?? {}) as ThreadTokenUsageSnapshot,
         },
       },
     ];
@@ -1359,7 +1360,7 @@ export function mapToRuntimeEvents(
       {
         ...codexEventBase(event, canonicalThreadId),
         type: "thread.token-usage.updated" as const,
-        payload: { usage: msg?.info ?? msg ?? {} },
+        payload: { usage: (msg?.info ?? msg ?? {}) as ThreadTokenUsageSnapshot },
       },
     ];
   }
