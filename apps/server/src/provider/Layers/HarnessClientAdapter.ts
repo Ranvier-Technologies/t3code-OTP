@@ -917,15 +917,9 @@ function mapHarnessEventToRuntimeEvents(
     return providerMapped;
   }
 
-  // Emit a warning for truly unrecognised events so operators can surface
-  // mapping gaps. Known-quiet events (already handled by codexEventMapping's
-  // QUIET_UNMAPPED_EVENTS) won't reach here — they return [] from the
-  // codexMapToRuntimeEvents fallback above.
-  if (event.method) {
-    console.debug(
-      `[mapHarnessEventToRuntimeEvents] unmapped event: ${event.method} (provider: ${event.provider ?? "unknown"})`,
-    );
-  }
+  // Unmapped events are already logged by codexMapToRuntimeEvents (which
+  // handles both QUIET_UNMAPPED_EVENTS suppression and console.debug for
+  // genuinely unknown methods). No additional logging needed here.
   return [];
 }
 

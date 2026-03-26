@@ -349,7 +349,8 @@ defmodule Harness.StorageTest do
     params = %{"threadId" => "t1", "provider" => "codex"}
     result = SessionManager.maybe_inject_resume_cursor(params, "t1", "codex")
 
-    assert result["resumeCursor"] == %{"threadId" => "codex-abc"}
+    # Codex cursors are normalized: {"threadId":"abc"} → "abc" (raw string)
+    assert result["resumeCursor"] == "codex-abc"
   end
 
   test "does NOT inject resumeCursor when provider mismatches" do
@@ -397,7 +398,8 @@ defmodule Harness.StorageTest do
     r2 = SessionManager.maybe_inject_resume_cursor(%{}, "t2", "cursor")
     r3 = SessionManager.maybe_inject_resume_cursor(%{}, "t3", "opencode")
 
-    assert r1["resumeCursor"] == %{"threadId" => "codex-1"}
+    # Codex cursor normalized to raw string; others kept as maps
+    assert r1["resumeCursor"] == "codex-1"
     assert r2["resumeCursor"] == %{"cursorChatId" => "cursor-1"}
     assert r3["resumeCursor"] == %{"sessionId" => "oc-1"}
   end
@@ -410,9 +412,9 @@ defmodule Harness.StorageTest do
     result = SessionManager.maybe_inject_resume_cursor(%{}, "t1", "cursor")
     refute Map.has_key?(result, "resumeCursor")
 
-    # Codex should still get its own cursor
+    # Codex should still get its own cursor (normalized to raw string)
     result = SessionManager.maybe_inject_resume_cursor(%{}, "t1", "codex")
-    assert result["resumeCursor"] == %{"threadId" => "codex-abc"}
+    assert result["resumeCursor"] == "codex-abc"
   end
 
   # --- Integration: SnapshotServer recovery ---
