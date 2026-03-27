@@ -305,7 +305,9 @@ function createVisibleAdapter(sessions: Map<string, SessionState>): VisibleAdapt
       projectId = (welcome.bootstrapProjectId as string) ?? "";
       this.projectId = projectId;
       if (!projectId) {
-        throw new Error("No bootstrapProjectId in server.welcome — is T3CODE_AUTO_BOOTSTRAP_PROJECT_FROM_CWD=1?");
+        throw new Error(
+          "No bootstrapProjectId in server.welcome — is T3CODE_AUTO_BOOTSTRAP_PROJECT_FROM_CWD=1?",
+        );
       }
     },
 
@@ -612,15 +614,23 @@ async function runStep(
   // Pre-step safety: check available memory via BEAM metrics + OS
   const systemMemGB = await getSystemMemoryGB();
   if (systemMemGB > 0) {
-    const estimatedMB =
-      perProvider * PROVIDERS.length * 150 + mockCount * 40;
+    const estimatedMB = perProvider * PROVIDERS.length * 150 + mockCount * 40;
     const safeGB = systemMemGB * 0.6;
     if (estimatedMB / 1024 > safeGB) {
       fail(
         `Step ${stepIndex + 1} needs ~${(estimatedMB / 1024).toFixed(1)}GB but only ${safeGB.toFixed(1)}GB safe. ` +
           `Skipping to prevent system freeze. Use --steps= to set lower targets.`,
       );
-      return buildStepResult(stepIndex, actualTotal, perProvider, mockCount, Date.now(), new Map(), null, null, null,
+      return buildStepResult(
+        stepIndex,
+        actualTotal,
+        perProvider,
+        mockCount,
+        Date.now(),
+        new Map(),
+        null,
+        null,
+        null,
         `Skipped: estimated ${(estimatedMB / 1024).toFixed(1)}GB exceeds ${safeGB.toFixed(1)}GB safe budget`,
       );
     }
@@ -897,9 +907,7 @@ async function runStep(
   // 2. Infrastructure errors (emfile, enomem, system_limit) — instant stop
   if (!stopReason) {
     const allErrors = [...sessions.values()].flatMap((s) => s.errors);
-    const infraError = allErrors.find((e) =>
-      INFRA_ERROR_PATTERNS.some((pat) => e.includes(pat)),
-    );
+    const infraError = allErrors.find((e) => INFRA_ERROR_PATTERNS.some((pat) => e.includes(pat)));
     if (infraError) {
       stopReason = `Infrastructure error: ${infraError}`;
       fail(`STOP: ${stopReason}`);
@@ -953,7 +961,10 @@ async function runStep(
   );
 }
 
-async function cleanup(mgr: HarnessClientManager | null, vis: VisibleAdapter | null): Promise<void> {
+async function cleanup(
+  mgr: HarnessClientManager | null,
+  vis: VisibleAdapter | null,
+): Promise<void> {
   log("Cleaning up sessions...");
   if (vis) {
     try {
@@ -1081,9 +1092,11 @@ async function main() {
     log(`Peak step (${maxStep} sessions): ~${estimatedGB.toFixed(1)}GB estimated`);
 
     if (estimatedGB > safeGB) {
-      const safeSessions = Math.floor(
-        (safeGB * 1024) / (MB_PER_REAL_SESSION + (SKIP_MOCK ? 0 : MB_PER_MOCK_SESSION / PROVIDERS.length)),
-      ) * PROVIDERS.length;
+      const safeSessions =
+        Math.floor(
+          (safeGB * 1024) /
+            (MB_PER_REAL_SESSION + (SKIP_MOCK ? 0 : MB_PER_MOCK_SESSION / PROVIDERS.length)),
+        ) * PROVIDERS.length;
       warn(
         `Peak step needs ~${estimatedGB.toFixed(1)}GB but only ${safeGB.toFixed(1)}GB safe. ` +
           `Max safe: ~${safeSessions} sessions. Higher steps may freeze the system.`,
