@@ -135,6 +135,10 @@ const PROVIDER_STATUS_STYLES = {
     dot: "bg-warning",
     badge: "warning" as const,
   },
+  checking: {
+    dot: "bg-muted-foreground animate-pulse",
+    badge: "warning" as const,
+  },
 } as const;
 
 function getProviderSummary(provider: ServerProvider | undefined): {
@@ -524,15 +528,16 @@ function SettingsRouteView() {
     const isHarnessProvider = Boolean(providerSettings.harnessDescription);
     const statusKey =
       liveProvider?.status ??
-      (isHarnessProvider && providerConfig.enabled
-        ? "ready"
-        : providerConfig.enabled
-          ? "warning"
-          : "disabled");
-    const statusStyle = PROVIDER_STATUS_STYLES[statusKey];
+      (providerConfig.enabled ? (isHarnessProvider ? "checking" : "warning") : "disabled");
+    const statusStyle =
+      PROVIDER_STATUS_STYLES[statusKey as keyof typeof PROVIDER_STATUS_STYLES] ??
+      PROVIDER_STATUS_STYLES.warning;
     const summary =
       isHarnessProvider && !liveProvider
-        ? { headline: providerSettings.harnessDescription!, detail: null }
+        ? {
+            headline: "Connecting to harness…",
+            detail: providerSettings.harnessDescription!,
+          }
         : getProviderSummary(liveProvider);
     const models: ReadonlyArray<ServerProviderModel> =
       liveProvider?.models ??
