@@ -249,7 +249,7 @@ export const makeTestProviderAdapterHarness = (options?: MakeTestProviderAdapter
       subagents: provider === "opencode" ? "full" : "none",
       attachments: provider === "claudeAgent" ? "full" : "basic",
       replay: "full",
-      mcpConfig: provider === "cursor" || provider === "opencode" ? "none" : "basic",
+      mcpConfig: provider === "cursor" || provider === "claudeAgent" ? "none" : "basic",
     } as const;
 
     const startSession: ProviderAdapterShape<ProviderAdapterError>["startSession"] = (input) =>

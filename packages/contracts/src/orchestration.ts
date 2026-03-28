@@ -165,7 +165,7 @@ export const DEFAULT_PROVIDER_CAPABILITIES: Record<ProviderKind, ProviderCapabil
     subagents: "full",
     attachments: "basic",
     replay: "full",
-    mcpConfig: "none",
+    mcpConfig: "basic",
   },
 };
 

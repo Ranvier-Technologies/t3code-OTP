@@ -508,7 +508,9 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
         yield* upsertSessionBinding(
           resumed,
           input.binding.threadId,
-          mcpContext.persistedRef ? { mcpConfigRef: mcpContext.persistedRef } : undefined,
+          mcpSupported && mcpContext.persistedRef
+            ? { mcpConfigRef: mcpContext.persistedRef }
+            : undefined,
         );
         yield* setSessionTelemetry(input.binding.threadId, {
           provider: resumed.provider,
@@ -662,7 +664,9 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
 
         yield* upsertSessionBinding(session, threadId, {
           modelSelection: input.modelSelection,
-          ...(mcpContext.persistedRef ? { mcpConfigRef: mcpContext.persistedRef } : {}),
+          ...(mcpSupported && mcpContext.persistedRef
+            ? { mcpConfigRef: mcpContext.persistedRef }
+            : {}),
         });
         yield* setSessionTelemetry(threadId, {
           provider: session.provider,

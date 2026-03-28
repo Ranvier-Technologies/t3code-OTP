@@ -14,6 +14,10 @@ function sanitizeName(name: string): string {
   return name.replace(/[^a-zA-Z0-9_-]+/g, "_");
 }
 
+function tomlKey(value: string): string {
+  return JSON.stringify(value);
+}
+
 function codexServerBlock(server: McpServerConfig): string {
   const section = [`[mcp_servers.${sanitizeName(server.name)}]`];
   if (server.transport === "stdio") {
@@ -29,7 +33,7 @@ function codexServerBlock(server: McpServerConfig): string {
     for (const [key, value] of Object.entries(server.env).toSorted(([left], [right]) =>
       left.localeCompare(right),
     )) {
-      section.push(`${key} = ${tomlString(value)}`);
+      section.push(`${tomlKey(key)} = ${tomlString(value)}`);
     }
   }
   return section.join("\n");
