@@ -113,6 +113,34 @@ export const ProviderCapabilities = Schema.Struct({
 });
 export type ProviderCapabilities = typeof ProviderCapabilities.Type;
 
+/** Default capabilities per provider. Used as fallback when ServerProvider.capabilities is absent. */
+export const DEFAULT_PROVIDER_CAPABILITIES: Record<ProviderKind, ProviderCapabilities> = {
+  codex: {
+    sessionModelSwitch: "in-session",
+    supportsUserInput: true,
+    supportsRollback: true,
+    supportsFileChangeApproval: true,
+  },
+  claudeAgent: {
+    sessionModelSwitch: "in-session",
+    supportsUserInput: true,
+    supportsRollback: true,
+    supportsFileChangeApproval: true,
+  },
+  cursor: {
+    sessionModelSwitch: "restart-session",
+    supportsUserInput: false,
+    supportsRollback: false,
+    supportsFileChangeApproval: false,
+  },
+  opencode: {
+    sessionModelSwitch: "in-session",
+    supportsUserInput: true,
+    supportsRollback: true,
+    supportsFileChangeApproval: true,
+  },
+};
+
 export const PROVIDER_SEND_TURN_MAX_INPUT_CHARS = 120_000;
 export const PROVIDER_SEND_TURN_MAX_ATTACHMENTS = 8;
 export const PROVIDER_SEND_TURN_MAX_IMAGE_BYTES = 10 * 1024 * 1024;

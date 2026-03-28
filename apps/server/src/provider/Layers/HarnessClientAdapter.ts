@@ -1286,8 +1286,14 @@ export function makeHarnessClientAdapterLive(options?: HarnessClientAdapterLiveO
       const listModels: HarnessClientAdapterShape["listModels"] = (provider) =>
         Effect.tryPromise({
           try: () => manager.listProviderModels(provider),
-          catch: () => [] as Array<{ slug: string; name: string }>,
-        }).pipe(Effect.orElseSucceed(() => [] as Array<{ slug: string; name: string }>));
+          catch: (cause) =>
+            new ProviderAdapterRequestError({
+              provider: provider as ProviderKind,
+              method: "listModels",
+              detail: toMessage(cause, `Failed to discover models for ${provider}.`),
+              cause,
+            }),
+        }).pipe(Effect.orElseSucceed(() => [] as ReadonlyArray<{ slug: string; name: string }>));
 
       // -------------------------------------------------------------------
       // Assemble the adapter shape

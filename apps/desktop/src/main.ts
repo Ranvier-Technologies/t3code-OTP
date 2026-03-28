@@ -975,7 +975,10 @@ function startBackend(): void {
       authToken: backendAuthToken,
     };
     const harnessPort = process.env.T3CODE_HARNESS_PORT;
-    if (harnessPort) bootstrapConfig.harnessPort = Number(harnessPort);
+    if (harnessPort) {
+      const parsed = parseInt(harnessPort, 10);
+      if (!Number.isNaN(parsed)) bootstrapConfig.harnessPort = parsed;
+    }
     const harnessSecret = process.env.T3CODE_HARNESS_SECRET;
     if (harnessSecret) bootstrapConfig.harnessSecret = harnessSecret;
 

@@ -25,6 +25,7 @@ import {
   makeServerRuntimeServicesLayer,
   makeProviderRegistryLayer,
 } from "./serverLayers";
+import { makeHarnessClientAdapterLive } from "./provider/Layers/HarnessClientAdapter";
 import { ProjectionSnapshotQuery } from "./orchestration/Services/ProjectionSnapshotQuery";
 import { Server } from "./wsServer";
 import { ServerLoggerLive } from "./serverLogger";
@@ -323,10 +324,13 @@ const ServerConfigLive = (input: CliInput) =>
   );
 
 const LayerLive = (input: CliInput) => {
+  // Single shared harness adapter — prevents duplicate WebSocket connections
+  // when both ProviderService and ProviderRegistry need harness access.
+  const sharedHarnessAdapter = makeHarnessClientAdapterLive();
   return Layer.empty.pipe(
     Layer.provideMerge(makeServerRuntimeServicesLayer()),
-    Layer.provideMerge(makeServerProviderLayer()),
-    Layer.provideMerge(makeProviderRegistryLayer()),
+    Layer.provideMerge(makeServerProviderLayer({ harnessAdapterLayer: sharedHarnessAdapter })),
+    Layer.provideMerge(makeProviderRegistryLayer({ harnessAdapterLayer: sharedHarnessAdapter })),
     Layer.provideMerge(SqlitePersistence.layerConfig),
     Layer.provideMerge(ServerLoggerLive),
     Layer.provideMerge(AnalyticsServiceLayerLive),

@@ -79,7 +79,9 @@ const makeRuntimePtyAdapterLayer = () =>
  * Cursor, and OpenCode are routed through it. Without harness, only
  * Claude and Codex (via Node SDK) are available.
  */
-export function makeServerProviderLayer(): Layer.Layer<
+export function makeServerProviderLayer(options?: {
+  harnessAdapterLayer?: ReturnType<typeof makeHarnessClientAdapterLive>;
+}): Layer.Layer<
   ProviderService,
   ProviderUnsupportedError | ProviderAdapterProcessError,
   | SqlClient.SqlClient
@@ -152,7 +154,7 @@ export function makeServerProviderLayer(): Layer.Layer<
           }),
         ).pipe(
           Layer.provide(claudeAdapterLayer),
-          Layer.provideMerge(makeHarnessClientAdapterLive()),
+          Layer.provideMerge(options?.harnessAdapterLayer ?? makeHarnessClientAdapterLive()),
           Layer.provideMerge(providerSessionDirectoryLayer),
         )
       : ProviderAdapterRegistryLive.pipe(
@@ -229,12 +231,16 @@ export function makeServerRuntimeServicesLayer() {
  *
  * When harness is enabled, Cursor and OpenCode model discovery is included.
  */
-export function makeProviderRegistryLayer() {
+export function makeProviderRegistryLayer(options?: {
+  harnessAdapterLayer?: ReturnType<typeof makeHarnessClientAdapterLive>;
+}) {
   return Effect.gen(function* () {
     const serverConfig = yield* ServerConfig;
     const harnessEnabled = serverConfig.harnessPort !== undefined;
     if (harnessEnabled) {
-      return ProviderRegistryWithHarnessLive.pipe(Layer.provide(makeHarnessClientAdapterLive()));
+      return ProviderRegistryWithHarnessLive.pipe(
+        Layer.provide(options?.harnessAdapterLayer ?? makeHarnessClientAdapterLive()),
+      );
     }
     return ProviderRegistryLive;
   }).pipe(Layer.unwrap);
