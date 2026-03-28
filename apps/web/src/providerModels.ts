@@ -3,6 +3,7 @@ import {
   type ClaudeModelOptions,
   type CodexModelOptions,
   type ModelCapabilities,
+  type ProviderCapabilities,
   type ProviderKind,
   type ServerProvider,
   type ServerProviderModel,
@@ -33,6 +34,20 @@ export function getProviderSnapshot(
   provider: ProviderKind,
 ): ServerProvider | undefined {
   return providers.find((candidate) => candidate.provider === provider);
+}
+
+const FALLBACK_PROVIDER_CAPABILITIES: ProviderCapabilities = {
+  sessionModelSwitch: "unsupported",
+  supportsUserInput: false,
+  supportsRollback: false,
+  supportsFileChangeApproval: false,
+};
+
+export function getProviderCapabilities(
+  providers: ReadonlyArray<ServerProvider>,
+  provider: ProviderKind,
+): ProviderCapabilities {
+  return getProviderSnapshot(providers, provider)?.capabilities ?? FALLBACK_PROVIDER_CAPABILITIES;
 }
 
 export function isProviderEnabled(

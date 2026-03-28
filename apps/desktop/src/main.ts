@@ -967,15 +967,19 @@ function startBackend(): void {
   });
   const bootstrapStream = child.stdio[3];
   if (bootstrapStream && "write" in bootstrapStream) {
-    bootstrapStream.write(
-      `${JSON.stringify({
-        mode: "desktop",
-        noBrowser: true,
-        port: backendPort,
-        t3Home: BASE_DIR,
-        authToken: backendAuthToken,
-      })}\n`,
-    );
+    const bootstrapConfig: Record<string, unknown> = {
+      mode: "desktop",
+      noBrowser: true,
+      port: backendPort,
+      t3Home: BASE_DIR,
+      authToken: backendAuthToken,
+    };
+    const harnessPort = process.env.T3CODE_HARNESS_PORT;
+    if (harnessPort) bootstrapConfig.harnessPort = Number(harnessPort);
+    const harnessSecret = process.env.T3CODE_HARNESS_SECRET;
+    if (harnessSecret) bootstrapConfig.harnessSecret = harnessSecret;
+
+    bootstrapStream.write(`${JSON.stringify(bootstrapConfig)}\n`);
     bootstrapStream.end();
   } else {
     child.kill("SIGTERM");
