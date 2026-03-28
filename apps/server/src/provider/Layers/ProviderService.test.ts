@@ -29,7 +29,7 @@ import {
   ProviderValidationError,
   type ProviderAdapterError,
 } from "../Errors.ts";
-import type { ProviderAdapterShape } from "../Services/ProviderAdapter.ts";
+import type { ProviderAdapterCapabilities, ProviderAdapterShape } from "../Services/ProviderAdapter.ts";
 import { ProviderAdapterRegistry } from "../Services/ProviderAdapterRegistry.ts";
 import { ProviderService } from "../Services/ProviderService.ts";
 import { ProviderSessionDirectory } from "../Services/ProviderSessionDirectory.ts";
@@ -182,6 +182,11 @@ function makeFakeCodexAdapter(provider: ProviderKind = "codex") {
       supportsUserInput: true,
       supportsRollback: true,
       supportsFileChangeApproval: true,
+      resume: "full",
+      subagents: "none",
+      attachments: "basic",
+      replay: "full",
+      mcpConfig: "none",
     },
     startSession,
     sendTurn,
@@ -1128,6 +1133,95 @@ validation.layer("ProviderServiceLive validation", (it) => {
       if (Option.isSome(runtime)) {
         assert.equal(runtime.value.threadId, session.threadId);
       }
+    }),
+  );
+});
+
+// ---------------------------------------------------------------------------
+// Capability model tests
+// ---------------------------------------------------------------------------
+
+function makeFakeAdapterWithCapabilities(
+  provider: ProviderKind,
+  overrides: Partial<ProviderAdapterCapabilities>,
+) {
+  const base = makeFakeCodexAdapter(provider);
+  const capabilities: ProviderAdapterCapabilities = {
+    ...base.adapter.capabilities,
+    ...overrides,
+  };
+  const adapter: ProviderAdapterShape<ProviderAdapterError> = {
+    ...base.adapter,
+    capabilities,
+  };
+  return { ...base, adapter };
+}
+
+const capabilitySuite = (() => {
+  const noRollback = makeFakeAdapterWithCapabilities("codex", {
+    supportsRollback: false,
+    resume: "none",
+    subagents: "none",
+    attachments: "none",
+    replay: "none",
+    mcpConfig: "none",
+  });
+  const registry: typeof ProviderAdapterRegistry.Service = {
+    getByProvider: (provider) =>
+      provider === "codex"
+        ? Effect.succeed(noRollback.adapter)
+        : Effect.fail(new ProviderUnsupportedError({ provider })),
+    listProviders: () => Effect.succeed(["codex"]),
+  };
+  const providerAdapterLayer = Layer.succeed(ProviderAdapterRegistry, registry);
+  const runtimeRepositoryLayer = ProviderSessionRuntimeRepositoryLive.pipe(
+    Layer.provide(SqlitePersistenceMemory),
+  );
+  const directoryLayer = ProviderSessionDirectoryLive.pipe(Layer.provide(runtimeRepositoryLayer));
+  const layer = it.layer(
+    Layer.mergeAll(
+      makeProviderServiceLive().pipe(
+        Layer.provide(providerAdapterLayer),
+        Layer.provide(directoryLayer),
+        Layer.provide(defaultServerSettingsLayer),
+        Layer.provideMerge(AnalyticsService.layerTest),
+      ),
+      directoryLayer,
+      runtimeRepositoryLayer,
+      NodeServices.layer,
+    ),
+  );
+  return { noRollback, layer };
+})();
+
+capabilitySuite.layer("Capability model constraints", (it) => {
+  it.effect("getCapabilities returns graduated fields including none values", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService;
+      const caps = yield* provider.getCapabilities("codex");
+
+      // Verify the adapter's "none" graduated capabilities are faithfully returned.
+      assert.equal(caps.resume, "none");
+      assert.equal(caps.subagents, "none");
+      assert.equal(caps.attachments, "none");
+      assert.equal(caps.replay, "none");
+      assert.equal(caps.mcpConfig, "none");
+
+      // Verify the boolean flags that were explicitly set.
+      assert.equal(caps.supportsRollback, false);
+    }),
+  );
+
+  it.effect("adapter with supportsRollback=false still declares none for resume", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService;
+      const caps = yield* provider.getCapabilities("codex");
+
+      // When supportsRollback is false AND resume is "none", both should be
+      // consistently reflected — a provider that cannot resume also cannot
+      // meaningfully rollback.
+      assert.equal(caps.supportsRollback, false);
+      assert.equal(caps.resume, "none");
     }),
   );
 });

@@ -23,6 +23,42 @@ import {
   RuntimeMode,
 } from "./orchestration";
 
+/**
+ * Provider session lifecycle state machine.
+ *
+ * ```
+ *   +-----------+      session started       +-------+
+ *   |connecting | --------------------------> | ready |
+ *   +-----------+                             +-------+
+ *        |                                     |    ^
+ *        | (fatal)                 sendTurn /  |    | turn completes /
+ *        v                        resume      v    | interrupt
+ *   +---------+                            +---------+
+ *   |  error  | <------------------------- | running |
+ *   +---------+         (runtime error)    +---------+
+ *        |                                     |
+ *        |  stopSession                        |  stopSession
+ *        v                                     v
+ *   +---------+                            +---------+
+ *   | closed  | <----- stopSession ------- | closed  |
+ *   +---------+                            +---------+
+ * ```
+ *
+ * **Transitions**:
+ * - `connecting -> ready`   : adapter has initialized and the provider process is responsive.
+ * - `connecting -> error`   : initial connection / spawn failed.
+ * - `ready -> running`      : a turn has been dispatched (sendTurn / resume).
+ * - `running -> ready`      : the turn completed or was interrupted.
+ * - `running -> error`      : an unrecoverable runtime error occurred mid-turn.
+ * - `error -> closed`       : stopSession called after an error.
+ * - `ready -> closed`       : stopSession called on an idle session.
+ * - `running -> closed`     : stopSession called on a running session (interrupts first).
+ *
+ * **Invariants**:
+ * - `closed` is a terminal state; no outbound transitions are allowed.
+ * - `error` may transition only to `closed` (manual recovery requires a new session).
+ * - Only one turn may be active per session (`running` is exclusive).
+ */
 const ProviderSessionStatus = Schema.Literals([
   "connecting",
   "ready",

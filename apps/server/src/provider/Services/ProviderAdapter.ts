@@ -25,6 +25,15 @@ import type { Stream } from "effect";
 
 export type ProviderSessionModelSwitchMode = "in-session" | "restart-session" | "unsupported";
 
+/**
+ * Graduated capability level for provider features.
+ *
+ * - `"none"` — the provider does not support this capability at all.
+ * - `"basic"` — partial / limited support (e.g. attachments only for certain formats).
+ * - `"full"` — complete support with no known limitations.
+ */
+export type CapabilityLevel = "none" | "basic" | "full";
+
 export interface ProviderAdapterCapabilities {
   /**
    * Declares whether changing the model on an existing session is supported.
@@ -36,6 +45,19 @@ export interface ProviderAdapterCapabilities {
   readonly supportsRollback: boolean;
   /** Whether this provider supports file-change approval requests. */
   readonly supportsFileChangeApproval: boolean;
+
+  // --- Graduated capabilities ---
+
+  /** Session resume capability. */
+  readonly resume: CapabilityLevel;
+  /** Sub-agent spawning capability. */
+  readonly subagents: CapabilityLevel;
+  /** File / image attachment capability. */
+  readonly attachments: CapabilityLevel;
+  /** Conversation replay capability. */
+  readonly replay: CapabilityLevel;
+  /** MCP server configuration capability. */
+  readonly mcpConfig: CapabilityLevel;
 }
 
 export interface ProviderThreadTurnSnapshot {
