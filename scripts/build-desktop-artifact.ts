@@ -447,6 +447,7 @@ const createBuildConfig = Effect.fn("createBuildConfig")(function* (
   target: string,
   productName: string,
   signed: boolean,
+  includeHarness: boolean,
 ) {
   const buildConfig: Record<string, unknown> = {
     appId: "com.t3tools.t3code",
@@ -456,6 +457,15 @@ const createBuildConfig = Effect.fn("createBuildConfig")(function* (
       buildResources: "apps/desktop/resources",
     },
   };
+  if (includeHarness) {
+    buildConfig.extraResources = [
+      {
+        from: "harness-rel",
+        to: "harness-rel",
+        filter: ["**/*"],
+      },
+    ];
+  }
   const publishConfig = resolveGitHubPublishConfig();
   if (publishConfig) {
     buildConfig.publish = [publishConfig];
@@ -612,6 +622,18 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
   yield* fs.copy(distDirs.desktopResources, stageResourcesDir);
   yield* fs.copy(distDirs.serverDist, path.join(stageAppDir, "apps/server/dist"));
 
+  // Stage the Elixir harness release if it exists (built separately via mix release)
+  const harnessRelDir = path.join(repoRoot, "apps/harness/_build/prod/rel/harness");
+  const harnessAvailable = yield* fs.exists(harnessRelDir);
+  if (harnessAvailable) {
+    yield* Effect.log("[desktop-artifact] Staging harness release...");
+    yield* fs.copy(harnessRelDir, path.join(stageAppDir, "harness-rel"));
+  } else {
+    yield* Effect.log(
+      "[desktop-artifact] No harness release found at apps/harness/_build/prod/rel/harness — skipping (Cursor/OpenCode will require external harness)",
+    );
+  }
+
   yield* assertPlatformBuildResources(options.platform, stageResourcesDir, options.verbose);
 
   // electron-builder is filtering out stageResourcesDir directory in the AppImage for production
@@ -631,6 +653,7 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
       options.target,
       desktopPackageJson.productName ?? "T3 Code",
       options.signed,
+      harnessAvailable,
     ),
     dependencies: {
       ...resolvedServerDependencies,

@@ -81,6 +81,9 @@ type DesktopUpdateErrorContext = DesktopUpdateState["errorContext"];
 
 let mainWindow: BrowserWindow | null = null;
 let backendProcess: ChildProcess.ChildProcess | null = null;
+let harnessProcess: ChildProcess.ChildProcess | null = null;
+let harnessPort = 0;
+let harnessSecret = "";
 let backendPort = 0;
 let backendAuthToken = "";
 let backendWsUrl = "";
@@ -930,6 +933,15 @@ function configureAutoUpdater(): void {
   }, AUTO_UPDATE_POLL_INTERVAL_MS);
   updatePollTimer.unref();
 }
+/**
+ * Schedules a delayed restart of the backend process after an unexpected exit.
+ *
+ * If the app is quitting or a restart is already scheduled, this is a no-op. Otherwise it logs the provided
+ * reason, increments the restart attempt counter, and sets a timeout to call `startBackend()` after an
+ * exponentially backed-off delay (capped at 10 seconds).
+ *
+ * @param reason - Human-readable reason for the restart (used for logging)
+ */
 function scheduleBackendRestart(reason: string): void {
   if (isQuitting || restartTimer) return;
 
@@ -943,6 +955,119 @@ function scheduleBackendRestart(reason: string): void {
   }, delayMs);
 }
 
+// ---------------------------------------------------------------------------
+// Elixir harness lifecycle
+// ---------------------------------------------------------------------------
+
+/**
+ * Locate the bundled Elixir harness release binary if it exists.
+ *
+ * Checks the packaged resources directory for "harness-rel/bin/harness" and returns its path when found.
+ *
+ * @returns The absolute path to the bundled harness binary, or `null` if the bundled release is not present.
+ */
+function resolveHarnessReleasePath(): string | null {
+  const relPath = Path.join(process.resourcesPath, "harness-rel", "bin", "harness");
+  if (FS.existsSync(relPath)) return relPath;
+  return null;
+}
+
+/**
+ * Start and initialize the Elixir harness process (either an external harness specified via environment variables or the bundled release) and configure the harness connection information.
+ *
+ * If an external harness is specified by T3CODE_HARNESS_PORT (and valid), the function records that port and the harness secret. If a bundled harness release exists, the function spawns it as a child process, sets runtime harness state, captures its stdout/stderr to the desktop log, and clears the in-memory child reference when it exits.
+ *
+ * @returns `true` if a harness is available (external override detected or the bundled harness was started), `false` otherwise.
+ */
+function startHarness(): boolean {
+  // Check for external harness first (dev override)
+  const externalPort = process.env.T3CODE_HARNESS_PORT;
+  if (externalPort) {
+    const parsed = parseInt(externalPort, 10);
+    if (!Number.isNaN(parsed)) {
+      harnessPort = parsed;
+      harnessSecret = process.env.T3CODE_HARNESS_SECRET ?? "dev-harness-secret";
+      writeDesktopLogHeader(`harness using external port=${harnessPort}`);
+      return true;
+    }
+  }
+
+  const releasePath = resolveHarnessReleasePath();
+  if (!releasePath) {
+    writeDesktopLogHeader("harness release not bundled, skipping");
+    return false;
+  }
+
+  harnessPort = 4321;
+  harnessSecret = Crypto.randomBytes(16).toString("hex");
+
+  const child = ChildProcess.spawn(releasePath, ["start"], {
+    env: {
+      ...process.env,
+      T3CODE_HARNESS_PORT: String(harnessPort),
+      T3CODE_HARNESS_SECRET: harnessSecret,
+      SECRET_KEY_BASE: Crypto.randomBytes(32).toString("hex"),
+      T3CODE_HOME: BASE_DIR,
+      // Prevent BEAM from trying to connect to other nodes
+      RELEASE_DISTRIBUTION: "none",
+      RELEASE_NODE: "harness@127.0.0.1",
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  harnessProcess = child;
+  writeDesktopLogHeader(`harness started pid=${child.pid ?? "unknown"} port=${harnessPort}`);
+
+  child.stdout?.on("data", (data: Buffer) => {
+    const line = data.toString().trim();
+    if (line) writeDesktopLogHeader(`[harness:out] ${line}`);
+  });
+
+  child.stderr?.on("data", (data: Buffer) => {
+    const line = data.toString().trim();
+    if (line) writeDesktopLogHeader(`[harness:err] ${line}`);
+  });
+
+  child.on("exit", (code, signal) => {
+    writeDesktopLogHeader(`harness exited code=${code ?? "null"} signal=${signal ?? "null"}`);
+    harnessProcess = null;
+  });
+
+  return true;
+}
+
+/**
+ * Stops the running harness child process and clears the stored reference.
+ *
+ * If a harness process exists and is still running, sends `SIGTERM` and, after 2 seconds,
+ * sends `SIGKILL` if the process has not exited. Clears the internal `harnessProcess`
+ * reference immediately.
+ */
+function stopHarness(): void {
+  const child = harnessProcess;
+  harnessProcess = null;
+  if (!child) return;
+
+  if (child.exitCode === null && child.signalCode === null) {
+    child.kill("SIGTERM");
+    setTimeout(() => {
+      if (child.exitCode === null && child.signalCode === null) {
+        child.kill("SIGKILL");
+      }
+    }, 2_000).unref();
+  }
+}
+
+/**
+ * Starts and supervises the bundled backend server process for the desktop app.
+ *
+ * If the app is already quitting or the backend is running, this is a no-op. When started,
+ * the function spawns a Node-mode child process for the backend, sends a JSON bootstrap
+ * configuration (including reserved port, auth token, T3 home, and harness connection info
+ * when available) via an IPC pipe, and captures its output into the packaged log sink when enabled.
+ * It records session START/END boundaries and will schedule automatic restarts on spawn errors,
+ * missing bootstrap pipe, unexpected exits, or when the backend entry file is absent.
+ */
 function startBackend(): void {
   if (isQuitting || backendProcess) return;
 
@@ -974,13 +1099,11 @@ function startBackend(): void {
       t3Home: BASE_DIR,
       authToken: backendAuthToken,
     };
-    const harnessPort = process.env.T3CODE_HARNESS_PORT;
-    if (harnessPort) {
-      const parsed = parseInt(harnessPort, 10);
-      if (!Number.isNaN(parsed)) bootstrapConfig.harnessPort = parsed;
+    // Forward harness connection info (set by startHarness or env var)
+    if (harnessPort > 0) {
+      bootstrapConfig.harnessPort = harnessPort;
+      bootstrapConfig.harnessSecret = harnessSecret;
     }
-    const harnessSecret = process.env.T3CODE_HARNESS_SECRET;
-    if (harnessSecret) bootstrapConfig.harnessSecret = harnessSecret;
 
     bootstrapStream.write(`${JSON.stringify(bootstrapConfig)}\n`);
     bootstrapStream.end();
@@ -1343,6 +1466,11 @@ app.setPath("userData", resolveUserDataPath());
 
 configureAppIdentity();
 
+/**
+ * Initializes the desktop runtime: reserves a backend port, generates an auth token, persists discovery files, registers IPC handlers, starts the harness and backend processes, and creates the main application window.
+ *
+ * This sets global runtime state used by other modules (including `backendPort`, `backendAuthToken`, and `backendWsUrl`), writes best-effort discovery files under `BASE_DIR` (`desktop-port` and `desktop-token`), registers IPC handlers for renderer communication, requests startup of the optional harness, starts the backend server, and creates the primary BrowserWindow.
+ */
 async function bootstrap(): Promise<void> {
   writeDesktopLogHeader("bootstrap start");
   backendPort = await Effect.service(NetService).pipe(
@@ -1351,13 +1479,28 @@ async function bootstrap(): Promise<void> {
     Effect.runPromise,
   );
   writeDesktopLogHeader(`reserved backend port via NetService port=${backendPort}`);
+
   backendAuthToken = Crypto.randomBytes(24).toString("hex");
+
+  // Write port + auth token so external scripts (council-dispatch, etc.) can discover the server
+  try {
+    FS.mkdirSync(BASE_DIR, { recursive: true });
+    FS.writeFileSync(Path.join(BASE_DIR, "desktop-port"), String(backendPort), "utf-8");
+    FS.writeFileSync(Path.join(BASE_DIR, "desktop-token"), backendAuthToken, {
+      encoding: "utf-8",
+      mode: 0o600,
+    });
+  } catch {
+    // Non-fatal — scripts just won't auto-discover the port/token
+  }
   const baseUrl = `ws://127.0.0.1:${backendPort}`;
   backendWsUrl = `${baseUrl}/?token=${encodeURIComponent(backendAuthToken)}`;
   writeDesktopLogHeader(`bootstrap resolved websocket endpoint baseUrl=${baseUrl}`);
 
   registerIpcHandlers();
   writeDesktopLogHeader("bootstrap ipc handlers registered");
+  startHarness();
+  writeDesktopLogHeader("bootstrap harness start requested");
   startBackend();
   writeDesktopLogHeader("bootstrap backend start requested");
   mainWindow = createWindow();
@@ -1369,6 +1512,7 @@ app.on("before-quit", () => {
   writeDesktopLogHeader("before-quit received");
   clearUpdatePollTimer();
   stopBackend();
+  stopHarness();
   restoreStdIoCapture?.();
 });
 

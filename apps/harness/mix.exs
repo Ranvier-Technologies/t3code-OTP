@@ -1,6 +1,20 @@
 defmodule Harness.MixProject do
   use Mix.Project
 
+  @doc """
+  Define the Mix project configuration for the Harness application.
+  
+  The returned keyword list includes the project's metadata and build configuration:
+    - `:app` — atom identifying the OTP application.
+    - `:version` — project version string.
+    - `:elixir` — required Elixir version requirement.
+    - `:elixirc_paths` — source paths selected by environment.
+    - `:start_permanent` — whether to start the application in permanent mode in production.
+    - `:aliases` — Mix task aliases.
+    - `:deps` — dependency specifications.
+    - `:releases` — release configuration for building releases.
+  """
+  @spec project() :: Keyword.t()
   def project do
     [
       app: :harness,
@@ -9,7 +23,18 @@ defmodule Harness.MixProject do
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
-      deps: deps()
+      deps: deps(),
+      releases: releases()
+    ]
+  end
+
+  defp releases do
+    [
+      harness: [
+        include_erts: true,
+        strip_beams: true,
+        cookie: "t3code_harness_desktop_local"
+      ]
     ]
   end
 
