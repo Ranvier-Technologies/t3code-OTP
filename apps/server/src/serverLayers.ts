@@ -171,9 +171,7 @@ export function makeServerProviderLayer(options?: {
         ).pipe(
           Layer.provide(codexAdapterLayer),
           Layer.provide(claudeAdapterLayer),
-          Layer.provideMerge(
-            harnessAdapterLayer.pipe(Layer.provideMerge(McpConfigServiceLive)),
-          ),
+          Layer.provideMerge(harnessAdapterLayer.pipe(Layer.provideMerge(McpConfigServiceLive))),
           Layer.provideMerge(providerSessionDirectoryLayer),
         )
       : useLegacyCodex
@@ -204,9 +202,7 @@ export function makeServerProviderLayer(options?: {
                     return Effect.fail(
                       new ProviderUnsupportedError({
                         provider,
-                        ...(provider === "codex" ||
-                        provider === "cursor" ||
-                        provider === "opencode"
+                        ...(provider === "codex" || provider === "cursor" || provider === "opencode"
                           ? {
                               cause: new Error(
                                 `Harness port is not configured. Provider '${provider}' requires the Elixir harness. ` +
