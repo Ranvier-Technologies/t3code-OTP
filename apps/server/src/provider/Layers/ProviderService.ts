@@ -131,6 +131,55 @@ function readPersistedCwd(
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
+// ---------------------------------------------------------------------------
+// resume_cursor validation (Task 007 — codex-harness-only cutover)
+// ---------------------------------------------------------------------------
+
+/**
+ * Validate a resume cursor value loaded from persistence.
+ *
+ * A valid cursor must be a non-null, non-undefined value. If it is a string,
+ * attempt JSON parse to verify it is well-formed JSON. Objects are accepted
+ * as-is (they were already deserialized from JSON by the persistence layer).
+ *
+ * Returns `{ valid: true, cursor }` when the cursor can be forwarded to the
+ * adapter's `startSession`, or `{ valid: false, reason }` with a human-readable
+ * explanation when it should be discarded (start fresh session).
+ */
+function validateResumeCursor(
+  cursor: unknown,
+):
+  | { readonly valid: true; readonly cursor: unknown }
+  | { readonly valid: false; readonly reason: string } {
+  if (cursor === null || cursor === undefined) {
+    return { valid: false, reason: "cursor is null or undefined" };
+  }
+  if (typeof cursor === "string") {
+    const trimmed = cursor.trim();
+    if (trimmed.length === 0) {
+      return { valid: false, reason: "cursor is an empty string" };
+    }
+    // Verify it parses as JSON
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (parsed === null || parsed === undefined) {
+        return { valid: false, reason: "cursor JSON parses to null/undefined" };
+      }
+      return { valid: true, cursor: parsed };
+    } catch (err) {
+      return {
+        valid: false,
+        reason: `cursor string is not valid JSON: ${err instanceof Error ? err.message : String(err)}`,
+      };
+    }
+  }
+  if (typeof cursor === "object") {
+    // Already deserialized object — accept
+    return { valid: true, cursor };
+  }
+  return { valid: false, reason: `unexpected cursor type: ${typeof cursor}` };
+}
+
 const makeProviderService = (options?: ProviderServiceLiveOptions) =>
   Effect.gen(function* () {
     const analytics = yield* Effect.service(AnalyticsService);
@@ -232,6 +281,23 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
           );
         }
 
+        // Validate resume cursor before forwarding (Task 007)
+        let validatedResumeCursor: unknown | undefined;
+        const cursorValidation = validateResumeCursor(input.binding.resumeCursor);
+        if (cursorValidation.valid) {
+          validatedResumeCursor = cursorValidation.cursor;
+        } else {
+          yield* Effect.logWarning(
+            `[resume_cursor_invalid] thread=${input.binding.threadId} reason=${cursorValidation.reason} — recovering without resume cursor`,
+          );
+          yield* analytics.record("provider.resume_cursor_invalid", {
+            provider: input.binding.provider,
+            threadId: input.binding.threadId,
+            reason: cursorValidation.reason,
+          });
+          validatedResumeCursor = undefined;
+        }
+
         const persistedCwd = readPersistedCwd(input.binding.runtimePayload);
         const persistedModelSelection = readPersistedModelSelection(input.binding.runtimePayload);
 
@@ -240,7 +306,7 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
           provider: input.binding.provider,
           ...(persistedCwd ? { cwd: persistedCwd } : {}),
           ...(persistedModelSelection ? { modelSelection: persistedModelSelection } : {}),
-          ...(hasResumeCursor ? { resumeCursor: input.binding.resumeCursor } : {}),
+          ...(validatedResumeCursor !== undefined ? { resumeCursor: validatedResumeCursor } : {}),
           runtimeMode: input.binding.runtimeMode ?? "full-access",
         });
         if (resumed.provider !== adapter.provider) {
@@ -317,11 +383,31 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
           );
         }
         const persistedBinding = Option.getOrUndefined(yield* directory.getBinding(threadId));
-        const effectiveResumeCursor =
+        const rawResumeCursor =
           input.resumeCursor ??
           (persistedBinding?.provider === input.provider
             ? persistedBinding.resumeCursor
             : undefined);
+
+        // Validate resume cursor before forwarding to adapter (Task 007)
+        let effectiveResumeCursor: unknown | undefined;
+        if (rawResumeCursor !== undefined && rawResumeCursor !== null) {
+          const validation = validateResumeCursor(rawResumeCursor);
+          if (validation.valid) {
+            effectiveResumeCursor = validation.cursor;
+          } else {
+            yield* Effect.logWarning(
+              `[resume_cursor_invalid] thread=${threadId} reason=${validation.reason} — starting fresh session`,
+            );
+            yield* analytics.record("provider.resume_cursor_invalid", {
+              provider: input.provider,
+              threadId,
+              reason: validation.reason,
+            });
+            effectiveResumeCursor = undefined;
+          }
+        }
+
         const adapter = yield* registry.getByProvider(input.provider);
         const session = yield* adapter.startSession({
           ...input,

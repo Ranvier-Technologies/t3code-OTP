@@ -4,6 +4,11 @@
  * Wraps `CodexAppServerManager` behind the `CodexAdapter` service contract and
  * maps manager failures into the shared `ProviderAdapterError` algebra.
  *
+ * @deprecated Since the codex-harness-only cutover (Task 007), Codex sessions
+ * route through `HarnessClientAdapter` by default. This direct adapter is only
+ * reachable when `T3CODE_CODEX_LEGACY=1` is set and will be removed in a
+ * future release.
+ *
  * @module CodexAdapterLive
  */
 import {

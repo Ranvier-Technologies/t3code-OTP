@@ -8,6 +8,11 @@
  * Uses Effect `ServiceMap.Service` for dependency injection and returns the
  * shared provider-adapter error channel with `provider: "codex"` context.
  *
+ * @deprecated Since the codex-harness-only cutover (Task 007), Codex sessions
+ * route through `HarnessClientAdapter` by default. This direct adapter is only
+ * reachable when `T3CODE_CODEX_LEGACY=1` is set and will be removed in a
+ * future release.
+ *
  * @module CodexAdapter
  */
 import { ServiceMap } from "effect";
