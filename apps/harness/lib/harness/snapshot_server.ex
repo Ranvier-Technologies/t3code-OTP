@@ -376,11 +376,13 @@ defmodule Harness.SnapshotServer do
         {:ok, events} ->
           {:reply, {:ok, seq, events}, state}
 
-        {:error, _reason} ->
+        {:error, reason} ->
+          Logger.warning("SQL replay failed (after_seq=#{after_seq}, seq=#{seq}): #{inspect(reason)}")
           {:reply, {:gap, seq, after_seq}, state}
       end
     catch
-      :exit, _ ->
+      :exit, reason ->
+        Logger.warning("SQL replay crashed (after_seq=#{after_seq}, seq=#{seq}): #{inspect(reason)}")
         {:reply, {:gap, seq, after_seq}, state}
     end
   end

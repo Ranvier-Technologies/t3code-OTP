@@ -25,7 +25,8 @@ defmodule HarnessWeb.Endpoint do
         _ -> conn.query_params["secret"]
       end
 
-    if secret == expected do
+    if is_binary(secret) and byte_size(secret) == byte_size(expected) and
+         Plug.Crypto.secure_compare(secret, expected) do
       conn
     else
       conn
