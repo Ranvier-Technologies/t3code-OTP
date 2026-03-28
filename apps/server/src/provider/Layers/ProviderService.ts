@@ -65,6 +65,32 @@ const ProviderRollbackConversationInput = Schema.Struct({
   numTurns: NonNegativeInt,
 });
 
+// ---------------------------------------------------------------------------
+// Structured telemetry metric emission
+// ---------------------------------------------------------------------------
+
+/**
+ * Emit a structured metric as JSON to stdout for downstream ingestion.
+ *
+ * This is a lightweight telemetry baseline that can be replaced with a proper
+ * telemetry pipeline (e.g. Effect Metrics, OpenTelemetry) in the future.
+ * The JSON structure is stable and machine-parseable.
+ */
+function emitMetric(
+  name: string,
+  attributes: Record<string, unknown>,
+): void {
+  // eslint-disable-next-line no-console
+  console.info(
+    JSON.stringify({
+      _t: "metric",
+      name,
+      ts: Date.now(),
+      ...attributes,
+    }),
+  );
+}
+
 function toValidationError(
   operation: string,
   issue: string,
@@ -360,6 +386,13 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
           strategy: "resume-thread",
           hasResumeCursor: resumed.resumeCursor !== undefined,
         });
+
+        emitMetric("session.resume", {
+          provider: resumed.provider,
+          outcome: "success",
+          cursor_valid: resumed.resumeCursor !== undefined,
+        });
+
         return { adapter, session: resumed } as const;
       });
 
@@ -470,6 +503,12 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
           hasModel:
             typeof input.modelSelection?.model === "string" &&
             input.modelSelection.model.trim().length > 0,
+        });
+
+        emitMetric("session.start", {
+          provider: session.provider,
+          adapter_path: input.provider === "claudeAgent" ? "claude" : "harness",
+          model: input.modelSelection?.model ?? null,
         });
 
         return session;
@@ -591,6 +630,11 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
         yield* directory.remove(input.threadId);
         yield* analytics.record("provider.session.stopped", {
           provider: routed.adapter.provider,
+        });
+
+        emitMetric("session.end", {
+          provider: routed.adapter.provider,
+          end_reason: "user_stop",
         });
       });
 
