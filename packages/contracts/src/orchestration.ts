@@ -128,7 +128,7 @@ export const DEFAULT_PROVIDER_CAPABILITIES: Record<ProviderKind, ProviderCapabil
     supportsFileChangeApproval: true,
   },
   cursor: {
-    sessionModelSwitch: "unsupported",
+    sessionModelSwitch: "restart-session",
     supportsUserInput: false,
     supportsRollback: false,
     supportsFileChangeApproval: false,

@@ -70,7 +70,7 @@ export const HARNESS_PROVIDER_CAPABILITIES: Record<
     supportsFileChangeApproval: true,
   },
   cursor: {
-    sessionModelSwitch: "unsupported",
+    sessionModelSwitch: "restart-session",
     supportsUserInput: false,
     supportsRollback: false,
     supportsFileChangeApproval: false,

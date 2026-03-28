@@ -475,7 +475,7 @@ export const makeTestProviderAdapterHarness = (options?: MakeTestProviderAdapter
     const adapter: ProviderAdapterShape<ProviderAdapterError> = {
       provider,
       capabilities: {
-        sessionModelSwitch: provider === "cursor" ? "unsupported" : "in-session",
+        sessionModelSwitch: provider === "cursor" ? "restart-session" : "in-session",
         supportsUserInput: provider !== "cursor",
         supportsRollback: provider !== "cursor",
         supportsFileChangeApproval: provider !== "cursor",
