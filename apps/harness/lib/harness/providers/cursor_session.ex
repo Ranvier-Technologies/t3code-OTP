@@ -346,6 +346,7 @@ defmodule Harness.Providers.CursorSession do
     state = %{state | stopped: true}
     maybe_complete_turn(state, "completed")
     cancel_all_pending(state)
+    emit_event(state, :session, "session/closed", %{})
 
     if port do
       try do
