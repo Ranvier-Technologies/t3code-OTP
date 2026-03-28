@@ -97,9 +97,7 @@ export class T3Client {
    */
   async connect(): Promise<Record<string, unknown>> {
     const base = `ws://127.0.0.1:${this.port}`;
-    const url = this.authToken
-      ? `${base}?token=${encodeURIComponent(this.authToken)}`
-      : base;
+    const url = this.authToken ? `${base}?token=${encodeURIComponent(this.authToken)}` : base;
 
     return new Promise((resolve, reject) => {
       let settled = false;
