@@ -239,6 +239,19 @@ export class ProviderSessionDirectoryPersistenceError extends Schema.TaggedError
   }
 }
 
+/**
+ * McpConfigError - MCP configuration resolution failure.
+ */
+export class McpConfigError extends Schema.TaggedErrorClass<McpConfigError>()("McpConfigError", {
+  operation: Schema.String,
+  detail: Schema.String,
+  cause: Schema.optional(Schema.Defect),
+}) {
+  override get message(): string {
+    return `MCP config error in ${this.operation}: ${this.detail}`;
+  }
+}
+
 export type ProviderAdapterError =
   | ProviderAdapterValidationError
   | ProviderAdapterSessionNotFoundError
@@ -252,4 +265,5 @@ export type ProviderServiceError =
   | ProviderSessionNotFoundError
   | ProviderSessionDirectoryPersistenceError
   | ProviderAdapterError
-  | CheckpointServiceError;
+  | CheckpointServiceError
+  | McpConfigError;

@@ -38,8 +38,10 @@ import { ClaudeAdapter } from "./provider/Services/ClaudeAdapter";
 import { CodexAdapter } from "./provider/Services/CodexAdapter";
 import { ProviderAdapterRegistryLive } from "./provider/Layers/ProviderAdapterRegistry";
 import { ProviderAdapterRegistry } from "./provider/Services/ProviderAdapterRegistry";
+import { McpConfigServiceLive } from "./provider/Layers/McpConfig";
 import { makeProviderServiceLive } from "./provider/Layers/ProviderService";
 import { ProviderSessionDirectoryLive } from "./provider/Layers/ProviderSessionDirectory";
+import { McpConfigService } from "./provider/Services/McpConfig";
 import { ProviderService } from "./provider/Services/ProviderService";
 import { makeEventNdjsonLogger } from "./provider/Layers/EventNdjsonLogger";
 import {
@@ -93,7 +95,7 @@ const useLegacyCodex = process.env.T3CODE_CODEX_LEGACY === "1";
 export function makeServerProviderLayer(options?: {
   harnessAdapterLayer?: ReturnType<typeof makeHarnessClientAdapterLive>;
 }): Layer.Layer<
-  ProviderService,
+  ProviderService | McpConfigService,
   ProviderUnsupportedError | ProviderAdapterProcessError,
   | SqlClient.SqlClient
   | ServerConfig
@@ -276,9 +278,11 @@ export function makeServerProviderLayer(options?: {
             Layer.provideMerge(providerSessionDirectoryLayer),
           );
 
-    return makeProviderServiceLive(
+    const providerServiceLayer = makeProviderServiceLive(
       canonicalEventLogger ? { canonicalEventLogger } : undefined,
     ).pipe(Layer.provide(adapterRegistryLayer), Layer.provide(providerSessionDirectoryLayer));
+
+    return Layer.mergeAll(providerServiceLayer, McpConfigServiceLive);
   }).pipe(Layer.unwrap);
 }
 

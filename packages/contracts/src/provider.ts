@@ -157,3 +157,25 @@ export const ProviderEvent = Schema.Struct({
   payload: Schema.optional(Schema.Unknown),
 });
 export type ProviderEvent = typeof ProviderEvent.Type;
+
+// ---------------------------------------------------------------------------
+// MCP Config Schemas
+// ---------------------------------------------------------------------------
+
+export const McpServerConfig = Schema.Struct({
+  name: TrimmedNonEmptyString,
+  command: TrimmedNonEmptyString,
+  args: Schema.Array(Schema.String),
+  env: Schema.optional(Schema.Record(Schema.String, Schema.String)),
+  enabled: Schema.Boolean,
+});
+export type McpServerConfig = typeof McpServerConfig.Type;
+
+export const ResolvedMcpConfig = Schema.Struct({
+  /** Hash of the resolved config for change detection. */
+  version: TrimmedNonEmptyString,
+  servers: Schema.Array(McpServerConfig),
+  /** ISO timestamp of when config was resolved. */
+  resolvedAt: IsoDateTime,
+});
+export type ResolvedMcpConfig = typeof ResolvedMcpConfig.Type;
