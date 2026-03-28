@@ -22,9 +22,13 @@ const LEGACY_ADAPTER_KEY_MAP: Record<string, string> = {
   codex: "harness:codex",
 };
 
+/** Track which threads have already logged their migration to avoid log spam. */
+const _migratedThreadIds = new Set<string>();
+
 /**
  * If the persisted `adapterKey` is a legacy value, return the migrated key and
- * log the migration for observability. Otherwise return the key unchanged.
+ * log the migration for observability (once per thread per process lifetime).
+ * Otherwise return the key unchanged.
  */
 function migrateAdapterKey(
   adapterKey: string,
@@ -32,9 +36,12 @@ function migrateAdapterKey(
 ): { readonly key: string; readonly migrated: boolean } {
   const mapped = LEGACY_ADAPTER_KEY_MAP[adapterKey];
   if (mapped !== undefined) {
-    console.log(
-      `[adapter_key_migration] thread=${threadId} old_key=${adapterKey} new_key=${mapped}`,
-    );
+    if (!_migratedThreadIds.has(threadId)) {
+      _migratedThreadIds.add(threadId);
+      console.log(
+        `[adapter_key_migration] thread=${threadId} old_key=${adapterKey} new_key=${mapped}`,
+      );
+    }
     return { key: mapped, migrated: true };
   }
   return { key: adapterKey, migrated: false };

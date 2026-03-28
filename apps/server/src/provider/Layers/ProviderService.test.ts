@@ -1193,6 +1193,7 @@ const capabilitySuite = (() => {
         Layer.provide(providerAdapterLayer),
         Layer.provide(directoryLayer),
         Layer.provide(defaultServerSettingsLayer),
+        Layer.provide(McpConfigServiceLive),
         Layer.provideMerge(AnalyticsService.layerTest),
       ),
       directoryLayer,
