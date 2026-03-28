@@ -4,6 +4,7 @@ import {
   ApprovalRequestId,
   EventId,
   IsoDateTime,
+  NonNegativeInt,
   ProviderItemId,
   ThreadId,
   TurnId,
@@ -57,6 +58,36 @@ export const ProviderSessionStartInput = Schema.Struct({
   runtimeMode: RuntimeMode,
 });
 export type ProviderSessionStartInput = typeof ProviderSessionStartInput.Type;
+
+export const McpTransport = Schema.Literals(["stdio", "http", "sse"]);
+export type McpTransport = typeof McpTransport.Type;
+
+export const McpServerConfig = Schema.Struct({
+  name: TrimmedNonEmptyString,
+  transport: McpTransport,
+  command: Schema.optional(TrimmedNonEmptyString),
+  args: Schema.optional(Schema.Array(Schema.String)),
+  env: Schema.optional(Schema.Record(Schema.String, Schema.String)),
+  url: Schema.optional(TrimmedNonEmptyString),
+  enabled: Schema.Boolean,
+});
+export type McpServerConfig = typeof McpServerConfig.Type;
+
+export const ResolvedMcpConfig = Schema.Struct({
+  version: TrimmedNonEmptyString,
+  resolvedAt: IsoDateTime,
+  sourcePaths: Schema.Array(TrimmedNonEmptyString),
+  servers: Schema.Array(McpServerConfig),
+});
+export type ResolvedMcpConfig = typeof ResolvedMcpConfig.Type;
+
+export const PersistedMcpConfigRef = Schema.Struct({
+  version: TrimmedNonEmptyString,
+  resolvedAt: IsoDateTime,
+  sourcePaths: Schema.Array(TrimmedNonEmptyString),
+  serverCount: NonNegativeInt,
+});
+export type PersistedMcpConfigRef = typeof PersistedMcpConfigRef.Type;
 
 export const ProviderSendTurnInput = Schema.Struct({
   threadId: ThreadId,
