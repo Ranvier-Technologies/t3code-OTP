@@ -142,7 +142,7 @@ export function resolveElectronPath() {
 
   // Skip custom launcher when T3CODE_SKIP_LAUNCHER is set — the cpSync
   // misses ICU data (icudtl.dat) causing GPU process crashes.
-  if (process.env.T3CODE_SKIP_LAUNCHER) {
+  if ("T3CODE_SKIP_LAUNCHER" in process.env) {
     return electronBinaryPath;
   }
 

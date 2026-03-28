@@ -1224,6 +1224,11 @@ export function makeHarnessClientAdapterLive(options?: HarnessClientAdapterLiveO
           Effect.tap((sessions) =>
             Effect.sync(() => {
               sessionListCache = { sessions, ts: Date.now() };
+              for (const s of sessions) {
+                if (s.threadId && !sessionProviderMap.has(s.threadId)) {
+                  sessionProviderMap.set(s.threadId, (s as any).provider ?? DEFAULT_PROVIDER);
+                }
+              }
             }),
           ),
           Effect.orElseSucceed(() => [] as ReadonlyArray<ProviderSession>),
@@ -1273,6 +1278,7 @@ export function makeHarnessClientAdapterLive(options?: HarnessClientAdapterLiveO
           Effect.tap(() =>
             Effect.sync(() => {
               sessionProviderMap.clear();
+              sessionListCache = null;
             }),
           ),
         );
