@@ -388,8 +388,12 @@ function assertSafeBinaryPath(binaryPath: string): void {
   if (trimmed.includes("\0")) {
     throw new Error(`Binary path contains null bytes: ${binaryPath}`);
   }
-  // Reject shell metacharacters that could enable command injection
-  const shellMetaChars = /[;|&$`(){}[\]!#~<>"'\\\n\r]/;
+  // Reject shell metacharacters that could enable command injection.
+  // On Windows, allow backslashes since they are the standard path separator.
+  const shellMetaChars =
+    process.platform === "win32"
+      ? /[;|&$`(){}[\]!#~<>"'\n\r]/
+      : /[;|&$`(){}[\]!#~<>"'\\\n\r]/;
   if (shellMetaChars.test(trimmed)) {
     throw new Error(
       `Binary path contains disallowed characters: ${binaryPath}`,
