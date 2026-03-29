@@ -364,6 +364,9 @@ defmodule Harness.Providers.CodexSession do
         true -> []
       end
 
+    # Convert image attachments to Codex input items (data URL format)
+    codex_input = append_image_inputs(codex_input, Map.get(params, "attachments", []))
+
     # Resolve model with account gating
     model = Map.get(params, "model")
     resolved_model = resolve_model_for_account(model, state.account)
@@ -536,8 +539,7 @@ defmodule Harness.Providers.CodexSession do
         end
 
       {:ok, {output, code}} ->
-        {:error,
-         "Codex CLI version check failed (exit #{code}): #{String.slice(output, 0, 200)}"}
+        {:error, "Codex CLI version check failed (exit #{code}): #{String.slice(output, 0, 200)}"}
 
       {:exit, reason} ->
         {:error, "Codex CLI version check task exited: #{inspect(reason)}"}
@@ -1128,6 +1130,27 @@ defmodule Harness.Providers.CodexSession do
         {lines, remaining}
     end
   end
+
+  # Convert image attachments to Codex input items and append to the input list.
+  # Gracefully degrades: if parsing fails, logs a warning and returns input unchanged.
+  defp append_image_inputs(codex_input, []), do: codex_input
+
+  defp append_image_inputs(codex_input, attachments) when is_list(attachments) do
+    case Harness.ImageProcessor.parse_attachments(attachments) do
+      {:ok, []} ->
+        codex_input
+
+      {:ok, images} ->
+        image_inputs = Enum.map(images, &Harness.ImageProcessor.to_codex_input/1)
+        codex_input ++ image_inputs
+
+      {:error, reason} ->
+        Logger.warning("Image processing failed for Codex turn: #{inspect(reason)}")
+        codex_input
+    end
+  end
+
+  defp append_image_inputs(codex_input, _), do: codex_input
 
   defp reject_nil_values(map) do
     Map.reject(map, fn {_k, v} -> is_nil(v) end)
