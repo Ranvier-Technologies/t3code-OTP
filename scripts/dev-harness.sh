@@ -67,6 +67,7 @@ done
 
 # ─── 2. Start Node server ─────────────────────────────────────────
 log "Starting Node server on port $PORT_SERVER..."
+BUN_RUNTIME_TRANSPILER_CACHE=0 \
 T3CODE_HARNESS_PORT=$PORT_HARNESS \
 T3CODE_HARNESS_SECRET=$SECRET \
 T3CODE_MODE=web \
