@@ -48,7 +48,7 @@ defmodule Harness.ImageProcessor do
       ...>   Harness.ImageProcessor.parse_attachments(attachments)
 
   """
-  @spec parse_attachments(list(map())) :: {:ok, list(parsed_image())} | {:error, term()}
+  @spec parse_attachments(term()) :: {:ok, list(parsed_image())} | {:error, term()}
   def parse_attachments(attachments) when is_list(attachments) do
     images =
       attachments
@@ -143,26 +143,22 @@ defmodule Harness.ImageProcessor do
     end
   end
 
-  # Compute the actual decoded byte size from the base64 payload rather than
+  # Decode the base64 payload to determine its actual byte size rather than
   # trusting the client-supplied sizeBytes field (which can be spoofed).
-  # Base64 encodes 3 bytes into 4 characters; padding characters (=) represent
-  # missing bytes at the end.
+  # This also validates that the payload is well-formed base64.
   defp validate_payload_size(base64_data) when is_binary(base64_data) do
-    padding = base64_data |> String.trim_trailing() |> count_base64_padding()
-    decoded_size = div(byte_size(base64_data), 4) * 3 - padding
+    case Base.decode64(base64_data, ignore: :whitespace) do
+      {:ok, decoded} ->
+        decoded_size = byte_size(decoded)
 
-    if decoded_size > @max_image_bytes do
-      {:error, {:image_too_large, decoded_size, @max_image_bytes}}
-    else
-      {:ok, decoded_size}
-    end
-  end
+        if decoded_size > @max_image_bytes do
+          {:error, {:image_too_large, decoded_size, @max_image_bytes}}
+        else
+          {:ok, decoded_size}
+        end
 
-  defp count_base64_padding(data) do
-    cond do
-      String.ends_with?(data, "==") -> 2
-      String.ends_with?(data, "=") -> 1
-      true -> 0
+      :error ->
+        {:error, :invalid_base64}
     end
   end
 end

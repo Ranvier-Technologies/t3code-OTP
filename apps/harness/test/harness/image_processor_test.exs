@@ -120,9 +120,9 @@ defmodule Harness.ImageProcessorTest do
 
     test "rejects image whose actual base64 payload exceeds max size" do
       max_bytes = 10 * 1024 * 1024
-      # Create a base64 string that decodes to > 10MB.
-      # base64 encodes 3 bytes into 4 chars, so we need ceil(max_bytes * 4/3) + 1 chars.
-      oversized_b64 = String.duplicate("A", div((max_bytes + 1) * 4, 3) + 4)
+      # Create a valid base64 string that decodes to > 10MB.
+      # Repeat "AAAA" (decodes to 3 bytes each) enough times to exceed the limit.
+      oversized_b64 = String.duplicate("AAAA", div(max_bytes, 3) + 1)
       oversized_data_url = "data:image/png;base64," <> oversized_b64
       attachment = make_attachment(%{"sizeBytes" => 100, "dataUrl" => oversized_data_url})
 
@@ -183,6 +183,22 @@ defmodule Harness.ImageProcessorTest do
       attachment = make_attachment(%{"dataUrl" => "data:image/png;base64,AA=="})
       assert {:ok, [image]} = ImageProcessor.parse_attachments([attachment])
       assert image.size_bytes == 1
+    end
+
+    test "rejects malformed base64 with bad alphabet characters" do
+      attachment = make_attachment(%{"dataUrl" => "data:image/png;base64,!!@@##$$"})
+      assert {:error, :invalid_base64} = ImageProcessor.parse_attachments([attachment])
+    end
+
+    test "rejects malformed base64 with incompatible padding" do
+      # "A===" is not valid base64 (single char + 3 padding is illegal)
+      attachment = make_attachment(%{"dataUrl" => "data:image/png;base64,A==="})
+      assert {:error, :invalid_base64} = ImageProcessor.parse_attachments([attachment])
+    end
+
+    test "rejects base64 that is only padding characters" do
+      attachment = make_attachment(%{"dataUrl" => "data:image/png;base64,===="})
+      assert {:error, :invalid_base64} = ImageProcessor.parse_attachments([attachment])
     end
   end
 
