@@ -105,13 +105,13 @@ defmodule Harness.ImageProcessor do
     with {:ok, data_url} <- extract_data_url(attachment),
          {:ok, mime_type, base64_data} <- parse_data_url(data_url),
          :ok <- validate_mime_type(mime_type),
-         :ok <- validate_size(attachment) do
+         {:ok, actual_size} <- validate_payload_size(base64_data) do
       {:ok,
        %{
          mime_type: mime_type,
          base64_data: base64_data,
          data_url: data_url,
-         size_bytes: Map.get(attachment, "sizeBytes"),
+         size_bytes: actual_size,
          name: Map.get(attachment, "name", "unnamed")
        }}
     end
@@ -143,13 +143,26 @@ defmodule Harness.ImageProcessor do
     end
   end
 
-  defp validate_size(%{"sizeBytes" => size}) when is_integer(size) and size > @max_image_bytes do
-    {:error, {:image_too_large, size, @max_image_bytes}}
+  # Compute the actual decoded byte size from the base64 payload rather than
+  # trusting the client-supplied sizeBytes field (which can be spoofed).
+  # Base64 encodes 3 bytes into 4 characters; padding characters (=) represent
+  # missing bytes at the end.
+  defp validate_payload_size(base64_data) when is_binary(base64_data) do
+    padding = base64_data |> String.trim_trailing() |> count_base64_padding()
+    decoded_size = div(byte_size(base64_data), 4) * 3 - padding
+
+    if decoded_size > @max_image_bytes do
+      {:error, {:image_too_large, decoded_size, @max_image_bytes}}
+    else
+      {:ok, decoded_size}
+    end
   end
 
-  defp validate_size(%{"sizeBytes" => size}) when is_integer(size) and size >= 0 do
-    :ok
+  defp count_base64_padding(data) do
+    cond do
+      String.ends_with?(data, "==") -> 2
+      String.ends_with?(data, "=") -> 1
+      true -> 0
+    end
   end
-
-  defp validate_size(_), do: {:error, :invalid_size_bytes}
 end

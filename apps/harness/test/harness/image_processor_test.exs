@@ -29,7 +29,8 @@ defmodule Harness.ImageProcessorTest do
       assert {:ok, [image]} = ImageProcessor.parse_attachments([make_attachment()])
       assert image.mime_type == "image/png"
       assert image.name == "screenshot.png"
-      assert image.size_bytes == 1024
+      # size_bytes is computed from actual base64 payload, not from the client-supplied sizeBytes
+      assert is_integer(image.size_bytes) and image.size_bytes > 0
       assert is_binary(image.base64_data)
       assert String.starts_with?(image.data_url, "data:image/png;base64,")
     end
@@ -117,17 +118,21 @@ defmodule Harness.ImageProcessorTest do
                ImageProcessor.parse_attachments([attachment])
     end
 
-    test "rejects image exceeding max size" do
+    test "rejects image whose actual base64 payload exceeds max size" do
       max_bytes = 10 * 1024 * 1024
-      attachment = make_attachment(%{"sizeBytes" => max_bytes + 1})
+      # Create a base64 string that decodes to > 10MB.
+      # base64 encodes 3 bytes into 4 chars, so we need ceil(max_bytes * 4/3) + 1 chars.
+      oversized_b64 = String.duplicate("A", div((max_bytes + 1) * 4, 3) + 4)
+      oversized_data_url = "data:image/png;base64," <> oversized_b64
+      attachment = make_attachment(%{"sizeBytes" => 100, "dataUrl" => oversized_data_url})
 
       assert {:error, {:image_too_large, _, ^max_bytes}} =
                ImageProcessor.parse_attachments([attachment])
     end
 
-    test "accepts image at exactly max size" do
-      max_bytes = 10 * 1024 * 1024
-      attachment = make_attachment(%{"sizeBytes" => max_bytes})
+    test "accepts image whose base64 payload is within max size" do
+      # Our test fixtures are tiny PNGs, well under 10MB
+      attachment = make_attachment()
       assert {:ok, [_]} = ImageProcessor.parse_attachments([attachment])
     end
 
@@ -139,25 +144,45 @@ defmodule Harness.ImageProcessorTest do
                ImageProcessor.parse_attachments([bad, good])
     end
 
-    test "rejects attachment with missing sizeBytes" do
-      attachment = make_attachment() |> Map.delete("sizeBytes")
-      assert {:error, :invalid_size_bytes} = ImageProcessor.parse_attachments([attachment])
-    end
-
-    test "rejects attachment with non-integer sizeBytes" do
-      attachment = make_attachment(%{"sizeBytes" => "1024"})
-      assert {:error, :invalid_size_bytes} = ImageProcessor.parse_attachments([attachment])
-    end
-
-    test "rejects attachment with negative sizeBytes" do
-      attachment = make_attachment(%{"sizeBytes" => -1})
-      assert {:error, :invalid_size_bytes} = ImageProcessor.parse_attachments([attachment])
-    end
-
-    test "accepts attachment with sizeBytes of 0" do
-      attachment = make_attachment(%{"sizeBytes" => 0})
+    test "ignores client-supplied sizeBytes and computes actual payload size" do
+      # Even with a spoofed sizeBytes of 100, the actual size is derived from base64
+      attachment = make_attachment(%{"sizeBytes" => 100})
       assert {:ok, [image]} = ImageProcessor.parse_attachments([attachment])
-      assert image.size_bytes == 0
+      # The actual decoded size of the test PNG base64 data, not the spoofed 100
+      assert image.size_bytes != 100
+      assert is_integer(image.size_bytes) and image.size_bytes > 0
+    end
+
+    test "parses attachment even when sizeBytes is missing" do
+      attachment = make_attachment() |> Map.delete("sizeBytes")
+      assert {:ok, [image]} = ImageProcessor.parse_attachments([attachment])
+      assert is_integer(image.size_bytes) and image.size_bytes > 0
+    end
+
+    test "parses attachment even when sizeBytes is non-integer" do
+      attachment = make_attachment(%{"sizeBytes" => "1024"})
+      assert {:ok, [image]} = ImageProcessor.parse_attachments([attachment])
+      assert is_integer(image.size_bytes) and image.size_bytes > 0
+    end
+
+    test "parses attachment even when sizeBytes is negative" do
+      attachment = make_attachment(%{"sizeBytes" => -1})
+      assert {:ok, [image]} = ImageProcessor.parse_attachments([attachment])
+      assert is_integer(image.size_bytes) and image.size_bytes > 0
+    end
+
+    test "computes correct decoded size from base64 payload" do
+      # 4 base64 chars = 3 decoded bytes; "AAAA" decodes to 3 bytes
+      attachment = make_attachment(%{"dataUrl" => "data:image/png;base64,AAAA"})
+      assert {:ok, [image]} = ImageProcessor.parse_attachments([attachment])
+      assert image.size_bytes == 3
+    end
+
+    test "computes correct decoded size with padding" do
+      # "AA==" decodes to 1 byte (4 chars, 2 padding)
+      attachment = make_attachment(%{"dataUrl" => "data:image/png;base64,AA=="})
+      assert {:ok, [image]} = ImageProcessor.parse_attachments([attachment])
+      assert image.size_bytes == 1
     end
   end
 
