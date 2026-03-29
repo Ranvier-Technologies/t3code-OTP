@@ -167,7 +167,10 @@ defmodule Harness.Providers.OpenCodeSession do
         sse_connected_at = System.monotonic_time(:millisecond)
         sse_pid = start_sse_listener(state)
         state = %{state | sse_pid: sse_pid, sse_connected_at: sse_connected_at}
-        Logger.info("[H4-TIMING] SSE connect initiated at mono=#{sse_connected_at}ms for thread #{state.thread_id}")
+
+        Logger.info(
+          "[H4-TIMING] SSE connect initiated at mono=#{sse_connected_at}ms for thread #{state.thread_id}"
+        )
 
         # Reuse a persisted session when available; otherwise create a new one.
         # This preserves conversation history across session restarts/resumes.
@@ -176,11 +179,17 @@ defmodule Harness.Providers.OpenCodeSession do
             # Verify the persisted session still exists on the server
             case verify_opencode_session(state) do
               :ok ->
-                Logger.info("Reusing persisted OpenCode session #{state.opencode_session_id} for thread #{state.thread_id}")
+                Logger.info(
+                  "Reusing persisted OpenCode session #{state.opencode_session_id} for thread #{state.thread_id}"
+                )
+
                 {{:ok, state.opencode_session_id}, true}
 
               {:error, reason} ->
-                Logger.info("Persisted OpenCode session invalid (#{inspect(reason)}), creating new session for thread #{state.thread_id}")
+                Logger.info(
+                  "Persisted OpenCode session invalid (#{inspect(reason)}), creating new session for thread #{state.thread_id}"
+                )
+
                 {create_opencode_session(state), false}
             end
           else
@@ -288,10 +297,15 @@ defmodule Harness.Providers.OpenCodeSession do
   @impl true
   def handle_info(:reconnect_sse, %{stopped: false} = state) do
     reconnect_at = System.monotonic_time(:millisecond)
-    Logger.info("[H4-TIMING] SSE reconnect at mono=#{reconnect_at}ms for thread #{state.thread_id}")
+
+    Logger.info(
+      "[H4-TIMING] SSE reconnect at mono=#{reconnect_at}ms for thread #{state.thread_id}"
+    )
+
     sse_pid = start_sse_listener(state)
     # Reset timing state for the new SSE connection so we capture the gap on resume
-    {:noreply, %{state | sse_pid: sse_pid, sse_connected_at: reconnect_at, permission_timing_logged: false}}
+    {:noreply,
+     %{state | sse_pid: sse_pid, sse_connected_at: reconnect_at, permission_timing_logged: false}}
   end
 
   @impl true
@@ -1296,8 +1310,21 @@ defmodule Harness.Providers.OpenCodeSession do
       )
     end
 
+    text_parts = [%{"type" => "text", "text" => text}]
+    attachments = Map.get(params || %{}, "attachments", [])
+
+    image_parts =
+      case Harness.ImageProcessor.parse_attachments(attachments) do
+        {:ok, images} ->
+          Enum.map(images, &Harness.ImageProcessor.to_opencode_part/1)
+
+        {:error, reason} ->
+          Logger.warning("Image processing failed for OpenCode turn: #{inspect(reason)}")
+          []
+      end
+
     body = %{
-      "parts" => [%{"type" => "text", "text" => text}]
+      "parts" => text_parts ++ image_parts
     }
 
     case http_post(url, body) do
