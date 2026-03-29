@@ -1295,6 +1295,10 @@ describe("WebSocket Server", () => {
           mcpConfig: "basic" as const,
         }),
       rollbackConversation: () => unsupported(),
+      mcpStatus: () => Effect.succeed({}),
+      mcpAdd: () => Effect.succeed({}),
+      mcpConnect: () => Effect.void,
+      mcpDisconnect: () => Effect.void,
       streamEvents: Stream.fromPubSub(runtimeEventPubSub),
     };
     const providerLayer = Layer.succeed(ProviderService, providerService);

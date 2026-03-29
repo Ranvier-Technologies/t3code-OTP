@@ -610,6 +610,7 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
   const projectionReadModelQuery = yield* ProjectionSnapshotQuery;
   const checkpointDiffQuery = yield* CheckpointDiffQuery;
   const orchestrationReactor = yield* OrchestrationReactor;
+  const providerService = yield* ProviderService;
   const { openInEditor } = yield* Open;
 
   const subscriptionsScope = yield* Scope.make("sequential");
@@ -935,6 +936,27 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
       case WS_METHODS.serverUpdateSettings: {
         const body = stripRequestTag(request.body);
         return yield* serverSettingsManager.updateSettings(body.patch);
+      }
+
+      // MCP management
+      case WS_METHODS.mcpStatus: {
+        const body = stripRequestTag(request.body);
+        return yield* providerService.mcpStatus(body.threadId);
+      }
+
+      case WS_METHODS.mcpAdd: {
+        const body = stripRequestTag(request.body);
+        return yield* providerService.mcpAdd(body.threadId, body.name, body.config);
+      }
+
+      case WS_METHODS.mcpConnect: {
+        const body = stripRequestTag(request.body);
+        return yield* providerService.mcpConnect(body.threadId, body.name);
+      }
+
+      case WS_METHODS.mcpDisconnect: {
+        const body = stripRequestTag(request.body);
+        return yield* providerService.mcpDisconnect(body.threadId, body.name);
       }
 
       default: {

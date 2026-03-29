@@ -1,13 +1,16 @@
+import { useEffect, useMemo, useState } from "react";
 import { XIcon } from "lucide-react";
 
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
-import type { McpSessionViewModel } from "../mcp-session-logic";
+import type { McpSessionServerViewModel, McpSessionViewModel } from "../mcp-session-logic";
 import { getMcpSessionStatusLabel } from "../mcp-session-logic";
+import { humanizeMcpServerName } from "@t3tools/shared/mcp";
+import { ensureNativeApi } from "../nativeApi";
 import { cn } from "~/lib/utils";
 
-function badgeVariantForState(state: McpSessionViewModel["servers"][number]["state"]) {
+function badgeVariantForState(state: McpSessionServerViewModel["state"]) {
   switch (state) {
     case "ready":
       return "success";
@@ -24,16 +27,96 @@ function badgeVariantForState(state: McpSessionViewModel["servers"][number]["sta
   }
 }
 
+function convertFetchedStatus(data: Record<string, unknown>): McpSessionServerViewModel[] {
+  const servers: McpSessionServerViewModel[] = [];
+  for (const [name, raw] of Object.entries(data)) {
+    if (!raw || typeof raw !== "object") continue;
+    const entry = raw as Record<string, unknown>;
+    const status = typeof entry.status === "string" ? entry.status : "unknown";
+
+    let state: McpSessionServerViewModel["state"];
+    switch (status) {
+      case "connected":
+        state = "ready";
+        break;
+      case "disabled":
+        state = "cancelled";
+        break;
+      case "failed":
+      case "needs_client_registration":
+        state = "failed";
+        break;
+      case "needs_auth":
+        state = "warning";
+        break;
+      default:
+        state = "unknown";
+    }
+
+    servers.push({
+      server: name,
+      displayName: humanizeMcpServerName(name),
+      state,
+      authExpired: status === "needs_auth",
+      message: typeof entry.error === "string" ? entry.error : null,
+      remediationCommand: null,
+      lastEventAt: null,
+    });
+  }
+  return servers;
+}
+
+function mergeServers(
+  eventServers: readonly McpSessionServerViewModel[],
+  fetchedServers: readonly McpSessionServerViewModel[],
+): McpSessionServerViewModel[] {
+  const byName = new Map<string, McpSessionServerViewModel>();
+  // Fetched data is the baseline
+  for (const server of fetchedServers) {
+    byName.set(server.server, server);
+  }
+  // Event-derived data overwrites (more recent)
+  for (const server of eventServers) {
+    byName.set(server.server, server);
+  }
+  return [...byName.values()];
+}
+
 export default function ThreadMcpStatusPanel({
+  threadId,
   mcp,
   onClose,
   className,
 }: {
+  threadId: string;
   mcp: McpSessionViewModel;
   onClose?: () => void;
   className?: string;
 }) {
-  if (!mcp.hasAnyMcpActivity) {
+  const [fetchedServers, setFetchedServers] = useState<McpSessionServerViewModel[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    ensureNativeApi()
+      .mcp.status(threadId)
+      .then((data) => {
+        if (!cancelled) setFetchedServers(convertFetchedStatus(data));
+      })
+      .catch(() => {
+        // Provider doesn't support MCP status — ignore
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [threadId]);
+
+  const servers = useMemo(
+    () => mergeServers(mcp.servers, fetchedServers),
+    [mcp.servers, fetchedServers],
+  );
+  const hasContent = servers.length > 0;
+
+  if (!hasContent && !mcp.hasAnyMcpActivity) {
     return null;
   }
 
@@ -57,40 +140,44 @@ export default function ThreadMcpStatusPanel({
         ) : null}
       </CardHeader>
       <CardContent className="min-h-0 space-y-3 overflow-y-auto p-4 pt-0">
-        <div className="space-y-2">
-          {mcp.servers.map((server) => (
-            <div
-              key={server.server}
-              className="rounded-xl border border-border/80 bg-muted/12 px-3 py-2.5"
-            >
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h3 className="text-sm font-medium text-foreground">{server.displayName}</h3>
-                    {server.authExpired ? (
-                      <Badge variant="warning" size="sm">
-                        Auth expired
-                      </Badge>
-                    ) : null}
+        {servers.length > 0 ? (
+          <div className="space-y-2">
+            {servers.map((server) => (
+              <div
+                key={server.server}
+                className="rounded-xl border border-border/80 bg-muted/12 px-3 py-2.5"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="text-sm font-medium text-foreground">{server.displayName}</h3>
+                      {server.authExpired ? (
+                        <Badge variant="warning" size="sm">
+                          Auth expired
+                        </Badge>
+                      ) : null}
+                    </div>
                   </div>
+                  <Badge variant={badgeVariantForState(server.state)}>
+                    {getMcpSessionStatusLabel(server.state)}
+                  </Badge>
                 </div>
-                <Badge variant={badgeVariantForState(server.state)}>
-                  {getMcpSessionStatusLabel(server.state)}
-                </Badge>
+                {server.message ? (
+                  <p className="mt-2.5 text-sm text-muted-foreground" title={server.message}>
+                    {server.message}
+                  </p>
+                ) : null}
+                {server.remediationCommand ? (
+                  <code className="mt-2.5 block overflow-x-auto rounded-md border border-border/80 bg-background px-2.5 py-2 text-xs text-foreground">
+                    {server.remediationCommand}
+                  </code>
+                ) : null}
               </div>
-              {server.message ? (
-                <p className="mt-2.5 text-sm text-muted-foreground" title={server.message}>
-                  {server.message}
-                </p>
-              ) : null}
-              {server.remediationCommand ? (
-                <code className="mt-2.5 block overflow-x-auto rounded-md border border-border/80 bg-background px-2.5 py-2 text-xs text-foreground">
-                  {server.remediationCommand}
-                </code>
-              ) : null}
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">No MCP servers detected.</p>
+        )}
       </CardContent>
     </Card>
   );

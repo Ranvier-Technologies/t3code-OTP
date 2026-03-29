@@ -606,6 +606,15 @@ defmodule Harness.Providers.ClaudeSession do
       "cwd" => get_in(msg, ["cwd"])
     })
 
+    # Claude CLI includes mcp_servers in system/init just like Codex.
+    # Normalize to the same event method so the mapping pipeline is uniform.
+    for %{"name" => name, "status" => status} <- Map.get(msg, "mcp_servers", []) do
+      emit_event(state, :notification, "mcpServer/startupStatus/updated", %{
+        "name" => name,
+        "status" => status
+      })
+    end
+
     state
   end
 

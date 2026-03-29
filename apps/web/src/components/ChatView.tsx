@@ -120,6 +120,7 @@ import { SidebarTrigger } from "./ui/sidebar";
 import { newCommandId, newMessageId, newThreadId } from "~/lib/utils";
 import { readNativeApi } from "~/nativeApi";
 import {
+  getProviderCapabilities,
   getProviderModelCapabilities,
   getProviderModels,
   resolveSelectableProvider,
@@ -671,6 +672,11 @@ export default function ChatView({ threadId }: ChatViewProps) {
     () => deriveMcpSessionViewModel(threadActivities),
     [threadActivities],
   );
+  const mcpCapable = useMemo(
+    () => getProviderCapabilities(providerStatuses, selectedProvider).mcpConfig !== "none",
+    [providerStatuses, selectedProvider],
+  );
+  const showMcpToggle = mcpCapable || mcpViewModel.hasAnyMcpActivity;
   const pendingApprovals = useMemo(
     () => derivePendingApprovals(threadActivities),
     [threadActivities],
@@ -3862,7 +3868,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
                             planSidebarOpen={planSidebarOpen}
                             runtimeMode={runtimeMode}
                             traitsMenuContent={providerTraitsMenuContent}
-                            hasMcpActivity={mcpViewModel.hasAnyMcpActivity}
+                            hasMcpActivity={showMcpToggle}
                             mcpPanelOpen={mcpPanelOpen}
                             onToggleInteractionMode={toggleInteractionMode}
                             onTogglePlanSidebar={togglePlanSidebar}
@@ -3959,7 +3965,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
                                 </Button>
                               </>
                             ) : null}
-                            {mcpViewModel.hasAnyMcpActivity ? (
+                            {showMcpToggle ? (
                               <>
                                 <Separator
                                   orientation="vertical"
@@ -4206,10 +4212,11 @@ export default function ChatView({ threadId }: ChatViewProps) {
         ) : null}
 
         {/* MCP status panel */}
-        {mcpPanelOpen && mcpViewModel.hasAnyMcpActivity ? (
+        {mcpPanelOpen && activeThreadId ? (
           <div className="flex h-full w-[340px] shrink-0 flex-col border-l border-border/70">
             <ThreadMcpStatusPanel
               key={`mcp:${activeThreadId}`}
+              threadId={activeThreadId}
               mcp={mcpViewModel}
               onClose={() => setMcpPanelOpen(false)}
               className="max-h-[min(70vh,36rem)]"

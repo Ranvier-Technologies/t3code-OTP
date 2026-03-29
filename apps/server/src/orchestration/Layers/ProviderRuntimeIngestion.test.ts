@@ -92,6 +92,10 @@ function createProviderServiceHarness() {
         mcpConfig: "basic" as const,
       }),
     rollbackConversation: () => unsupported(),
+    mcpStatus: () => Effect.succeed({}),
+    mcpAdd: () => Effect.succeed({}),
+    mcpConnect: () => Effect.void,
+    mcpDisconnect: () => Effect.void,
     streamEvents: Stream.fromPubSub(runtimeEventPubSub),
   };
 

@@ -215,6 +215,14 @@ export function createWsNativeApi(): NativeApi {
       getSettings: () => transport.request(WS_METHODS.serverGetSettings),
       updateSettings: (patch) => transport.request(WS_METHODS.serverUpdateSettings, { patch }),
     },
+    mcp: {
+      status: (threadId) => transport.request(WS_METHODS.mcpStatus, { threadId }),
+      add: (threadId, name, config) =>
+        transport.request(WS_METHODS.mcpAdd, { threadId, name, config }),
+      connect: (threadId, name) => transport.request(WS_METHODS.mcpConnect, { threadId, name }),
+      disconnect: (threadId, name) =>
+        transport.request(WS_METHODS.mcpDisconnect, { threadId, name }),
+    },
     orchestration: {
       getSnapshot: () => transport.request(ORCHESTRATION_WS_METHODS.getSnapshot),
       dispatchCommand: (command) =>

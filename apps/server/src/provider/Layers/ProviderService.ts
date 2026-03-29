@@ -43,6 +43,10 @@ import {
   ProviderValidationError,
 } from "../Errors.ts";
 import { ProviderAdapterRegistry } from "../Services/ProviderAdapterRegistry.ts";
+import {
+  HarnessClientAdapter,
+  type HarnessClientAdapterShape,
+} from "../Services/HarnessClientAdapter.ts";
 import type {
   ProviderAdapterCapabilities,
   ProviderAdapterShape,
@@ -1080,6 +1084,56 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
       ),
     );
 
+    // ── MCP Management (harness-only, capability-gated) ─────────────
+
+    const requireMcpCapable = (threadId: ThreadId, operation: string) =>
+      Effect.gen(function* () {
+        const routed = yield* resolveRoutableSession({
+          threadId,
+          operation,
+          allowRecovery: false,
+        });
+        if (routed.adapter.capabilities.mcpConfig === "none") {
+          return yield* toValidationError(
+            operation,
+            `Provider '${routed.adapter.provider}' does not support MCP management.`,
+          );
+        }
+        return routed;
+      });
+
+    const harnessOption = yield* Effect.serviceOption(HarnessClientAdapter);
+
+    const withMcpHarness = <A>(
+      operation: string,
+      threadId: ThreadId,
+      fn: (harness: HarnessClientAdapterShape) => Effect.Effect<A, ProviderAdapterError>,
+    ) =>
+      Effect.gen(function* () {
+        yield* requireMcpCapable(threadId, operation);
+        const harness = Option.getOrUndefined(harnessOption);
+        if (!harness) {
+          return yield* Effect.fail(
+            toValidationError(operation, "MCP management requires the Elixir harness."),
+          );
+        }
+        return yield* fn(harness);
+      });
+
+    const mcpStatus: ProviderServiceShape["mcpStatus"] = (threadId) =>
+      withMcpHarness("ProviderService.mcpStatus", threadId, (h) => h.mcpStatus(threadId));
+
+    const mcpAdd: ProviderServiceShape["mcpAdd"] = (threadId, name, config) =>
+      withMcpHarness("ProviderService.mcpAdd", threadId, (h) => h.mcpAdd(threadId, name, config));
+
+    const mcpConnect: ProviderServiceShape["mcpConnect"] = (threadId, name) =>
+      withMcpHarness("ProviderService.mcpConnect", threadId, (h) => h.mcpConnect(threadId, name));
+
+    const mcpDisconnect: ProviderServiceShape["mcpDisconnect"] = (threadId, name) =>
+      withMcpHarness("ProviderService.mcpDisconnect", threadId, (h) =>
+        h.mcpDisconnect(threadId, name),
+      );
+
     return {
       startSession,
       sendTurn,
@@ -1090,6 +1144,10 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
       listSessions,
       getCapabilities,
       rollbackConversation,
+      mcpStatus,
+      mcpAdd,
+      mcpConnect,
+      mcpDisconnect,
       // Each access creates a fresh PubSub subscription so that multiple
       // consumers (ProviderRuntimeIngestion, CheckpointReactor, etc.) each
       // independently receive all runtime events.
