@@ -1146,12 +1146,14 @@ export function mapToRuntimeEvents(
     event.method === "codex/event/mcp_startup_update" ||
     event.method === "mcpServer/startupStatus/updated"
   ) {
-    const server = asString(payload?.server) ?? asString(payload?.name);
+    // Codex wraps the MCP data in a `msg` envelope; unwrap if present.
+    const mcpPayload = asObject(payload?.msg) ?? payload;
+    const server = asString(mcpPayload?.server) ?? asString(mcpPayload?.name);
     const statusObj =
-      payload?.status && typeof payload.status === "object"
-        ? (payload.status as Record<string, unknown>)
+      mcpPayload?.status && typeof mcpPayload.status === "object"
+        ? (mcpPayload.status as Record<string, unknown>)
         : null;
-    const state = asString(statusObj?.state) ?? asString(payload?.status);
+    const state = asString(statusObj?.state) ?? asString(mcpPayload?.status);
     if (server && state) {
       return [
         {
@@ -1161,8 +1163,8 @@ export function mapToRuntimeEvents(
             server,
             status: {
               state,
-              ...(asString(statusObj?.error ?? payload?.error)
-                ? { error: asString(statusObj?.error ?? payload?.error) }
+              ...(asString(statusObj?.error ?? mcpPayload?.error)
+                ? { error: asString(statusObj?.error ?? mcpPayload?.error) }
                 : {}),
             },
           },
