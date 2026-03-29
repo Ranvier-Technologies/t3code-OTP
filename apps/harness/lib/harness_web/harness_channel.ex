@@ -214,6 +214,11 @@ defmodule HarnessWeb.HarnessChannel do
   end
 
   @impl true
+  def handle_in("mcp.status", _params, socket) do
+    {:reply, {:error, %{message: "Missing required param: threadId"}}, socket}
+  end
+
+  @impl true
   def handle_in("mcp.add", %{"threadId" => thread_id, "name" => name, "config" => config}, socket) do
     case SessionManager.mcp_add(thread_id, name, config) do
       {:ok, data} ->
@@ -222,6 +227,18 @@ defmodule HarnessWeb.HarnessChannel do
       {:error, reason} ->
         {:reply, {:error, %{message: format_error(reason)}}, socket}
     end
+  end
+
+  @impl true
+  def handle_in("mcp.add", params, socket) do
+    missing =
+      cond do
+        is_nil(Map.get(params, "threadId")) -> "threadId"
+        is_nil(Map.get(params, "name")) -> "name"
+        true -> "config"
+      end
+
+    {:reply, {:error, %{message: "Missing required param: #{missing}"}}, socket}
   end
 
   @impl true
@@ -236,6 +253,12 @@ defmodule HarnessWeb.HarnessChannel do
   end
 
   @impl true
+  def handle_in("mcp.connect", params, socket) do
+    missing = if is_nil(Map.get(params, "threadId")), do: "threadId", else: "name"
+    {:reply, {:error, %{message: "Missing required param: #{missing}"}}, socket}
+  end
+
+  @impl true
   def handle_in("mcp.disconnect", %{"threadId" => thread_id, "name" => name}, socket) do
     case SessionManager.mcp_disconnect(thread_id, name) do
       :ok ->
@@ -244,6 +267,12 @@ defmodule HarnessWeb.HarnessChannel do
       {:error, reason} ->
         {:reply, {:error, %{message: format_error(reason)}}, socket}
     end
+  end
+
+  @impl true
+  def handle_in("mcp.disconnect", params, socket) do
+    missing = if is_nil(Map.get(params, "threadId")), do: "threadId", else: "name"
+    {:reply, {:error, %{message: "Missing required param: #{missing}"}}, socket}
   end
 
   # --- Snapshot ---

@@ -533,6 +533,7 @@ const AccountRateLimitsUpdatedPayload = Schema.Struct({
 export type AccountRateLimitsUpdatedPayload = typeof AccountRateLimitsUpdatedPayload.Type;
 
 const McpStatusUpdatedPayload = Schema.Struct({
+  server: TrimmedNonEmptyStringSchema,
   status: Schema.Unknown,
 });
 export type McpStatusUpdatedPayload = typeof McpStatusUpdatedPayload.Type;

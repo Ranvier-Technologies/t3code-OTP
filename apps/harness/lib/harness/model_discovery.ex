@@ -113,6 +113,10 @@ defmodule Harness.ModelDiscovery do
     end
   end
 
+  defp do_fetch(provider) do
+    {:error, "No model discovery for provider: #{provider}"}
+  end
+
   defp try_http_model_discovery do
     # Find any active OpenCode session and query models through it
     sessions = Harness.SessionManager.list_sessions()
@@ -125,10 +129,6 @@ defmodule Harness.ModelDiscovery do
     else
       {:error, :no_active_session}
     end
-  end
-
-  defp do_fetch(provider) do
-    {:error, "No model discovery for provider: #{provider}"}
   end
 
   defp fetch_from_cli(binary, args, parser) do

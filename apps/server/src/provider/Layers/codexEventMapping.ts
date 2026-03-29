@@ -507,8 +507,6 @@ const QUIET_UNMAPPED_EVENTS = new Set([
   "file.watcher.updated",
   "session.diff",
   "session.created",
-  "mcp_startup_update",
-  "mcp_startup_complete",
   "rate_limit_event",
   "stream_event",
   "hook_started",
@@ -1141,6 +1139,26 @@ export function mapToRuntimeEvents(
         },
       },
     ];
+  }
+
+  if (event.method === "mcpServer/startupStatus/updated") {
+    const server = asString(payload?.name);
+    const state = asString(payload?.status);
+    if (server && state) {
+      return [
+        {
+          type: "mcp.status.updated",
+          ...runtimeEventBase(event, canonicalThreadId),
+          payload: {
+            server,
+            status: {
+              state,
+              ...(asString(payload?.error) ? { error: asString(payload?.error) } : {}),
+            },
+          },
+        },
+      ];
+    }
   }
 
   if (event.method === "thread/realtime/started") {

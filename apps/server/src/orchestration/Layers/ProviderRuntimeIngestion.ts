@@ -527,6 +527,36 @@ function runtimeEventToActivities(
       ];
     }
 
+    case "mcp.status.updated": {
+      return [
+        {
+          id: event.eventId,
+          createdAt: event.createdAt,
+          tone: "info",
+          kind: "mcp.status.updated",
+          summary: "MCP server status updated",
+          payload: event.payload,
+          turnId: toTurnId(event.turnId) ?? null,
+          ...maybeSequence,
+        },
+      ];
+    }
+
+    case "mcp.oauth.completed": {
+      return [
+        {
+          id: event.eventId,
+          createdAt: event.createdAt,
+          tone: "info",
+          kind: "mcp.oauth.completed",
+          summary: "MCP OAuth completed",
+          payload: event.payload,
+          turnId: toTurnId(event.turnId) ?? null,
+          ...maybeSequence,
+        },
+      ];
+    }
+
     default:
       break;
   }

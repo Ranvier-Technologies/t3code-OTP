@@ -206,7 +206,11 @@ defmodule Harness.Providers.OpenCodeSession do
               case fetch_server_messages(state) do
                 {:ok, msgs} when msgs != [] ->
                   turns = server_messages_to_turns(msgs)
-                  Logger.info("Hydrated #{length(turns)} turns from server for thread #{state.thread_id}")
+
+                  Logger.info(
+                    "Hydrated #{length(turns)} turns from server for thread #{state.thread_id}"
+                  )
+
                   %{state | messages: turns}
 
                 _ ->
@@ -539,18 +543,12 @@ defmodule Harness.Providers.OpenCodeSession do
 
   @impl true
   def handle_call(:mcp_status, _from, state) do
-    result =
-      case http_get("#{state.base_url}/mcp") do
-        {:ok, data} -> {:ok, data}
-        {:error, reason} -> {:error, reason}
-      end
-
-    {:reply, result, state}
+    {:reply, http_get("#{state.base_url}/mcp"), state}
   end
 
   @impl true
   def handle_call({:mcp_add, name, config}, _from, state) do
-    body = Map.merge(%{"name" => name}, config)
+    body = %{"name" => name, "config" => config}
 
     result =
       case http_post("#{state.base_url}/mcp", body) do
@@ -563,8 +561,10 @@ defmodule Harness.Providers.OpenCodeSession do
 
   @impl true
   def handle_call({:mcp_connect, name}, _from, state) do
+    encoded_name = encode_path_segment(name)
+
     result =
-      case http_post("#{state.base_url}/mcp/#{name}/connect", %{}) do
+      case http_post("#{state.base_url}/mcp/#{encoded_name}/connect", %{}) do
         {:ok, _} -> :ok
         {:error, reason} -> {:error, reason}
       end
@@ -574,8 +574,10 @@ defmodule Harness.Providers.OpenCodeSession do
 
   @impl true
   def handle_call({:mcp_disconnect, name}, _from, state) do
+    encoded_name = encode_path_segment(name)
+
     result =
-      case http_post("#{state.base_url}/mcp/#{name}/disconnect", %{}) do
+      case http_post("#{state.base_url}/mcp/#{encoded_name}/disconnect", %{}) do
         {:ok, _} -> :ok
         {:error, reason} -> {:error, reason}
       end
@@ -1340,9 +1342,14 @@ defmodule Harness.Providers.OpenCodeSession do
 
   defp http_delete(url) do
     case Req.request(method: :delete, url: url, receive_timeout: 10_000) do
-      {:ok, %{status: status}} when status in 200..204 -> {:ok, %{}}
-      {:ok, %{status: status, body: body}} -> {:error, "HTTP #{status}: #{inspect(body) |> String.slice(0, 200)}"}
-      {:error, reason} -> {:error, inspect(reason)}
+      {:ok, %{status: status}} when status in 200..204 ->
+        {:ok, %{}}
+
+      {:ok, %{status: status, body: body}} ->
+        {:error, "HTTP #{status}: #{inspect(body) |> String.slice(0, 200)}"}
+
+      {:error, reason} ->
+        {:error, inspect(reason)}
     end
   end
 
@@ -1444,17 +1451,17 @@ defmodule Harness.Providers.OpenCodeSession do
   end
 
   # Fetch providers from the OpenCode server's GET /provider endpoint.
-  # Returns {:ok, provider_map} or {:error, reason}.
+  # Returns {:ok, provider_list} or {:error, reason}.
   defp fetch_providers(state) do
     case http_get("#{state.base_url}/provider") do
-      {:ok, %{"all" => providers}} when is_map(providers) ->
+      {:ok, %{"all" => providers}} when is_list(providers) ->
         {:ok, providers}
 
-      {:ok, providers} when is_map(providers) ->
+      {:ok, providers} when is_list(providers) ->
         {:ok, providers}
 
       {:ok, _} ->
-        {:ok, %{}}
+        {:ok, []}
 
       {:error, reason} ->
         {:error, reason}
@@ -1462,14 +1469,15 @@ defmodule Harness.Providers.OpenCodeSession do
   end
 
   # Extract a flat list of %{"slug" => "provider/model", "name" => "..."} from the
-  # provider map returned by GET /provider.
-  defp extract_models_from_providers(providers) when is_map(providers) do
-    Enum.flat_map(providers, fn {provider_key, provider_data} ->
+  # provider list returned by GET /provider.
+  defp extract_models_from_providers(providers) when is_list(providers) do
+    Enum.flat_map(providers, fn provider_data ->
+      provider_id = Map.get(provider_data, "id")
       models = Map.get(provider_data, "models", %{})
 
-      if is_map(models) do
+      if is_binary(provider_id) and is_map(models) do
         Enum.map(models, fn {model_key, model_data} ->
-          slug = "#{provider_key}/#{model_key}"
+          slug = "#{provider_id}/#{model_key}"
           name = Map.get(model_data, "name", model_key)
           %{"slug" => slug, "name" => name}
         end)
@@ -1496,7 +1504,10 @@ defmodule Harness.Providers.OpenCodeSession do
           {:ok, []}
 
         {:error, reason} ->
-          Logger.warning("Failed to fetch server messages for session #{state.opencode_session_id}: #{inspect(reason)}")
+          Logger.warning(
+            "Failed to fetch server messages for session #{state.opencode_session_id}: #{inspect(reason)}"
+          )
+
           {:ok, []}
       end
     else
@@ -1508,11 +1519,11 @@ defmodule Harness.Providers.OpenCodeSession do
   # used by read_thread. Filters for assistant-role messages only.
   defp server_messages_to_turns(messages) when is_list(messages) do
     messages
-    |> Enum.filter(fn msg -> Map.get(msg, "role") == "assistant" end)
+    |> Enum.filter(fn msg -> get_in(msg, ["info", "role"]) == "assistant" end)
     |> Enum.map(fn msg ->
       %{
-        turn_id: Map.get(msg, "id", generate_id()),
-        started_at: Map.get(msg, "createdAt", now_iso()),
+        turn_id: get_in(msg, ["info", "id"]) || generate_id(),
+        started_at: server_message_started_at(msg),
         items:
           (Map.get(msg, "parts", []) || [])
           |> Enum.flat_map(fn part ->
@@ -1522,11 +1533,13 @@ defmodule Harness.Providers.OpenCodeSession do
                 if text != "", do: [%{"type" => "text", "text" => text}], else: []
 
               "tool" ->
-                [%{
-                  "type" => "tool",
-                  "tool" => Map.get(part, "tool", "unknown"),
-                  "state" => Map.get(part, "state", %{})
-                }]
+                [
+                  %{
+                    "type" => "tool",
+                    "tool" => Map.get(part, "tool", "unknown"),
+                    "state" => Map.get(part, "state", %{})
+                  }
+                ]
 
               _ ->
                 []
@@ -1542,10 +1555,14 @@ defmodule Harness.Providers.OpenCodeSession do
     if state.opencode_session_id do
       case http_delete("#{state.base_url}/session/#{state.opencode_session_id}") do
         {:ok, _} ->
-          Logger.info("Deleted OpenCode session #{state.opencode_session_id} for thread #{state.thread_id}")
+          Logger.info(
+            "Deleted OpenCode session #{state.opencode_session_id} for thread #{state.thread_id}"
+          )
 
         {:error, reason} ->
-          Logger.warning("Failed to delete OpenCode session #{state.opencode_session_id}: #{inspect(reason)}")
+          Logger.warning(
+            "Failed to delete OpenCode session #{state.opencode_session_id}: #{inspect(reason)}"
+          )
       end
     end
   end
@@ -1590,6 +1607,32 @@ defmodule Harness.Providers.OpenCodeSession do
 
   defp turn_id_from_state(%{turn_state: %{turn_id: turn_id}}), do: turn_id
   defp turn_id_from_state(_), do: nil
+
+  defp server_message_started_at(message) do
+    message
+    |> get_in(["info", "time", "created"])
+    |> unix_timestamp_to_iso()
+  end
+
+  defp unix_timestamp_to_iso(timestamp) when is_integer(timestamp) do
+    {value, unit} =
+      cond do
+        timestamp >= 100_000_000_000_000 -> {timestamp, :microsecond}
+        timestamp >= 100_000_000_000 -> {timestamp, :millisecond}
+        true -> {timestamp, :second}
+      end
+
+    case DateTime.from_unix(value, unit) do
+      {:ok, datetime} -> DateTime.to_iso8601(datetime)
+      _ -> now_iso()
+    end
+  end
+
+  defp unix_timestamp_to_iso(_), do: now_iso()
+
+  defp encode_path_segment(value) when is_binary(value) do
+    URI.encode(value, &URI.char_unreserved?/1)
+  end
 
   defp persist_binding(state) do
     # Only persist durable identifiers — port is ephemeral and stale after restart
