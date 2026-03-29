@@ -1157,10 +1157,14 @@ defmodule Harness.Providers.OpenCodeSession do
 
     case status_type do
       "idle" ->
-        # Complete the turn — maybe_complete_turn now emits both
-        # turn/completed and session/state-changed → ready internally,
-        # keeping the ordering deterministic.
-        maybe_complete_turn(state, "completed")
+        # Complete the turn — maybe_complete_turn emits both
+        # turn/completed and session/state-changed → ready internally.
+        # Always emit ready afterwards for the case where turn_state is
+        # already nil (e.g. session.idle arrived after another path
+        # already completed the turn).
+        state = maybe_complete_turn(state, "completed")
+        emit_event(state, :session, "session/state-changed", %{"state" => "ready"})
+        state
 
       "busy" ->
         emit_event(state, :session, "session/state-changed", %{"state" => "running"})
