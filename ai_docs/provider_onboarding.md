@@ -6,7 +6,7 @@ Guide for adding a new coding agent provider to T3 Code.
 
 T3 Code uses a layered adapter architecture:
 
-```
+```text
 Transport (WebSocket/RPC)
     |
 ProviderService (cross-provider facade)
@@ -45,7 +45,8 @@ export const ProviderKind = Schema.Literal(
 
 1. **Create session module**: `apps/harness/lib/harness/providers/your_session.ex`
    - Implement `@behaviour Harness.Providers.ProviderBehaviour`
-   - All 8 callbacks: `start_link/1`, `send_turn/2`, `interrupt_turn/3`, `respond_to_approval/3`, `respond_to_user_input/3`, `read_thread/2`, `rollback_thread/3`, `stop/1`
+   - Implement the SessionManager-facing callbacks: `start_link/1`, `wait_for_ready/2`, `send_turn/2`, `interrupt_turn/3`, `respond_to_approval/3`, `respond_to_user_input/3`, `read_thread/2`, and `rollback_thread/3`
+   - If your module exposes `stop/1`, document it as a provider-owned shutdown helper; supervisor shutdown is not dispatched through SessionManager
    - Use `GenServer, restart: :temporary`
    - Register via `{:via, Registry, {Harness.SessionRegistry, thread_id, "your_provider"}}`
 
@@ -89,7 +90,7 @@ Every adapter must implement these methods (see `apps/server/src/provider/Servic
 
 ## Step 4: Declare Capabilities
 
-Set `ProviderAdapterCapabilities` for your provider:
+Set `ProviderAdapterCapabilities` for your provider. In shared contracts this shape is represented by `ProviderCapabilities`, and the capability level fields use `ProviderCapabilityLevel`:
 
 ```typescript
 {
@@ -97,6 +98,11 @@ Set `ProviderAdapterCapabilities` for your provider:
   supportsUserInput: boolean,
   supportsRollback: boolean,
   supportsFileChangeApproval: boolean,
+  resume: "none" | "basic" | "full",
+  subagents: "none" | "basic" | "full",
+  attachments: "none" | "basic" | "full",
+  replay: "none" | "basic" | "full",
+  mcpConfig: "none" | "basic" | "full",
 }
 ```
 

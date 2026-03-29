@@ -1,61 +1,44 @@
-/**
- * Provider Contract Integration Tests
- *
- * Capability-driven contract test suite that validates the ProviderAdapterShape
- * contract against a test adapter harness. Tests auto-skip for capabilities
- * declared as unsupported by the adapter.
- *
- * Covers: session lifecycle, rollback, resume, user-input, and approval flows.
- *
- * @module contract.integration.test
- */
-import type { ProviderRuntimeEvent } from "@t3tools/contracts";
-import { ThreadId } from "@t3tools/contracts";
+import type { ProviderKind, ProviderRuntimeEvent } from "@t3tools/contracts";
+import { ApprovalRequestId, ThreadId } from "@t3tools/contracts";
 import { DEFAULT_SERVER_SETTINGS } from "@t3tools/contracts/settings";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { it, assert, describe } from "@effect/vitest";
-import { Effect, FileSystem, Layer, Path, Queue, Stream } from "effect";
+import { assert, it } from "@effect/vitest";
+import {
+  Cause,
+  Duration,
+  Effect,
+  Exit,
+  FileSystem,
+  Layer,
+  Path,
+  Queue,
+  Schema,
+  Stream,
+} from "effect";
 
-import { ProviderUnsupportedError } from "../src/provider/Errors.ts";
+import {
+  ProviderAdapterValidationError,
+  ProviderUnsupportedError,
+} from "../src/provider/Errors.ts";
+import { McpConfigService } from "../src/provider/Services/McpConfig.ts";
 import { ProviderAdapterRegistry } from "../src/provider/Services/ProviderAdapterRegistry.ts";
 import { ProviderSessionDirectoryLive } from "../src/provider/Layers/ProviderSessionDirectory.ts";
 import { makeProviderServiceLive } from "../src/provider/Layers/ProviderService.ts";
+import { ProviderSessionRuntimeRepository } from "../src/persistence/Services/ProviderSessionRuntime.ts";
 import {
   ProviderService,
   type ProviderServiceShape,
 } from "../src/provider/Services/ProviderService.ts";
-import { McpConfigServiceLive } from "../src/provider/Layers/McpConfig.ts";
 import { ServerSettingsService } from "../src/serverSettings.ts";
 import { AnalyticsService } from "../src/telemetry/Services/AnalyticsService.ts";
 import { SqlitePersistenceMemory } from "../src/persistence/Layers/Sqlite.ts";
 import { ProviderSessionRuntimeRepositoryLive } from "../src/persistence/Layers/ProviderSessionRuntime.ts";
-
 import {
   makeTestProviderAdapterHarness,
   type TestProviderAdapterHarness,
   type TestTurnResponse,
 } from "./TestProviderAdapter.integration.ts";
-import {
-  codexTurnApprovalFixture,
-  codexTurnToolFixture,
-  codexTurnTextFixture,
-} from "./fixtures/providerRuntime.ts";
-
-// ---------------------------------------------------------------------------
-// Test harness capabilities (from the test adapter)
-// ---------------------------------------------------------------------------
-
-const capabilities = {
-  supportsRollback: true,
-  supportsUserInput: true,
-  supportsFileChangeApproval: true,
-  supportsResume: true,
-  sessionModelSwitch: "in-session" as const,
-};
-
-// ---------------------------------------------------------------------------
-// Test fixture setup
-// ---------------------------------------------------------------------------
+import { codexTurnTextFixture } from "./fixtures/providerRuntime.ts";
 
 const makeWorkspaceDirectory = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem;
@@ -65,46 +48,76 @@ const makeWorkspaceDirectory = Effect.gen(function* () {
   return cwd;
 }).pipe(Effect.provide(NodeServices.layer));
 
-interface ContractFixture {
+interface IntegrationFixture {
   readonly cwd: string;
   readonly harness: TestProviderAdapterHarness;
-  readonly layer: Layer.Layer<ProviderService, unknown, never>;
+  readonly layer: Layer.Layer<ProviderService | ProviderSessionRuntimeRepository, unknown, never>;
+  readonly analyticsEvents: Array<{
+    readonly event: string;
+    readonly properties?: Readonly<Record<string, unknown>>;
+  }>;
 }
 
-const makeContractFixture = Effect.gen(function* () {
-  const cwd = yield* makeWorkspaceDirectory;
-  const harness = yield* makeTestProviderAdapterHarness();
+const makeIntegrationFixture = (provider: ProviderKind) =>
+  Effect.gen(function* () {
+    const cwd = yield* makeWorkspaceDirectory;
+    const harness = yield* makeTestProviderAdapterHarness({ provider });
 
-  const registry: typeof ProviderAdapterRegistry.Service = {
-    getByProvider: (provider) =>
-      provider === "codex"
-        ? Effect.succeed(harness.adapter)
-        : Effect.fail(new ProviderUnsupportedError({ provider })),
-    listProviders: () => Effect.succeed(["codex"]),
-  };
+    const registry: typeof ProviderAdapterRegistry.Service = {
+      getByProvider: (candidate) =>
+        candidate === provider
+          ? Effect.succeed(harness.adapter)
+          : Effect.fail(new ProviderUnsupportedError({ provider: candidate })),
+      listProviders: () => Effect.succeed([provider]),
+    };
 
-  const directoryLayer = ProviderSessionDirectoryLive.pipe(
-    Layer.provide(ProviderSessionRuntimeRepositoryLive),
-  );
+    const runtimeRepositoryLayer = ProviderSessionRuntimeRepositoryLive.pipe(
+      Layer.provide(SqlitePersistenceMemory),
+    );
+    const directoryLayer = ProviderSessionDirectoryLive.pipe(Layer.provide(runtimeRepositoryLayer));
+    const analyticsEvents: Array<{
+      readonly event: string;
+      readonly properties?: Readonly<Record<string, unknown>>;
+    }> = [];
 
-  const shared = Layer.mergeAll(
-    directoryLayer,
-    Layer.succeed(ProviderAdapterRegistry, registry),
-    ServerSettingsService.layerTest(DEFAULT_SERVER_SETTINGS),
-    AnalyticsService.layerTest,
-  ).pipe(Layer.provide(SqlitePersistenceMemory));
+    const shared = Layer.mergeAll(
+      runtimeRepositoryLayer,
+      directoryLayer,
+      Layer.succeed(ProviderAdapterRegistry, registry),
+      ServerSettingsService.layerTest(DEFAULT_SERVER_SETTINGS),
+      Layer.succeed(AnalyticsService, {
+        record: (event: string, properties?: Readonly<Record<string, unknown>>) =>
+          Effect.sync(() => {
+            analyticsEvents.push({ event, ...(properties ? { properties } : {}) });
+          }),
+        flush: Effect.void,
+      }),
+      McpConfigService.layerTest({
+        resolveConfig: () =>
+          Effect.succeed({
+            version: "mcp-v1",
+            resolvedAt: "2026-01-01T00:00:00.000Z",
+            sourcePaths: ["/workspace/.t3/mcp.json"],
+            servers: [
+              {
+                name: "playwright",
+                transport: "stdio",
+                command: "npx",
+                args: ["@playwright/mcp@latest"],
+                enabled: true,
+              },
+            ],
+          }),
+      }),
+    );
 
-  const layer = makeProviderServiceLive().pipe(
-    Layer.provide(shared),
-    Layer.provide(McpConfigServiceLive),
-  );
-
-  return {
-    cwd,
-    harness,
-    layer,
-  } satisfies ContractFixture;
-});
+    return {
+      cwd,
+      harness,
+      layer: Layer.merge(shared, makeProviderServiceLive().pipe(Layer.provide(shared))),
+      analyticsEvents,
+    } satisfies IntegrationFixture;
+  });
 
 const collectEventsDuring = <A, E, R>(
   stream: Stream.Stream<ProviderRuntimeEvent>,
@@ -121,260 +134,234 @@ const collectEventsDuring = <A, E, R>(
 
     return yield* Effect.forEach(
       Array.from({ length: count }, () => undefined),
-      () => Queue.take(queue),
+      () =>
+        Queue.take(queue).pipe(
+          Effect.timeout(Duration.seconds(5)),
+          Effect.flatMap((event) =>
+            event === undefined
+              ? Effect.fail(new Error("timed out waiting for provider event"))
+              : Effect.succeed(event),
+          ),
+        ),
       { discard: false },
     );
   });
 
-const runTurn = (input: {
+const queueTextTurn = (input: {
   readonly provider: ProviderServiceShape;
   readonly harness: TestProviderAdapterHarness;
   readonly threadId: ThreadId;
-  readonly userText: string;
-  readonly response: TestTurnResponse;
+  readonly text: string;
+  readonly response?: TestTurnResponse;
 }) =>
   Effect.gen(function* () {
-    yield* input.harness.queueTurnResponse(input.threadId, input.response);
+    yield* input.harness.queueTurnResponse(
+      input.threadId,
+      input.response ?? { events: codexTurnTextFixture },
+    );
+
     return yield* collectEventsDuring(
       input.provider.streamEvents,
-      input.response.events.length,
+      (input.response ?? { events: codexTurnTextFixture }).events.length,
       input.provider.sendTurn({
         threadId: input.threadId,
-        input: input.userText,
+        input: input.text,
         attachments: [],
       }),
     );
   });
 
-// ---------------------------------------------------------------------------
-// Contract: Session Lifecycle
-// ---------------------------------------------------------------------------
+const PROVIDERS: ReadonlyArray<ProviderKind> = ["codex", "claudeAgent", "cursor", "opencode"];
 
-describe("Provider Contract: session lifecycle", () => {
-  it.effect("starts a session, sends a turn, and stops cleanly", () =>
-    Effect.gen(function* () {
-      const fixture = yield* makeContractFixture;
+for (const providerKind of PROVIDERS) {
+  it.effect(
+    `provider contract: ${providerKind} starts, reports capabilities, and replays a turn`,
+    () =>
+      Effect.gen(function* () {
+        const fixture = yield* makeIntegrationFixture(providerKind);
 
-      yield* Effect.gen(function* () {
-        const provider = yield* ProviderService;
+        yield* Effect.gen(function* () {
+          const providerService = yield* ProviderService;
+          const threadId = ThreadId.makeUnsafe(`thread-contract-${providerKind}`);
+          const session = yield* providerService.startSession(threadId, {
+            threadId,
+            provider: providerKind,
+            cwd: fixture.cwd,
+            runtimeMode: "full-access",
+          });
+          assert.equal(session.provider, providerKind);
 
-        // Start session
-        const session = yield* provider.startSession(ThreadId.makeUnsafe("contract-lifecycle-1"), {
-          threadId: ThreadId.makeUnsafe("contract-lifecycle-1"),
-          provider: "codex",
-          cwd: fixture.cwd,
-          runtimeMode: "full-access",
-        });
-        assert.equal(session.status, "ready");
-        assert.equal(session.provider, "codex");
+          const listed = yield* providerService.listSessions();
+          assert.equal(listed.length, 1);
+          assert.equal(listed[0]?.provider, providerKind);
 
-        // Send turn
-        const events = yield* runTurn({
-          provider,
-          harness: fixture.harness,
-          threadId: session.threadId,
-          userText: "hello contract",
-          response: { events: codexTurnTextFixture },
-        });
-        assert.isAbove(events.length, 0);
+          const capabilities = yield* providerService.getCapabilities(providerKind);
+          assert.deepEqual(capabilities, fixture.harness.adapter.capabilities);
 
-        // List sessions includes our session
-        const sessions = yield* provider.listSessions();
-        assert.isAbove(sessions.length, 0);
+          const observedEvents = yield* queueTextTurn({
+            provider: providerService,
+            harness: fixture.harness,
+            threadId,
+            text: `hello from ${providerKind}`,
+          });
+          assert.equal(observedEvents.length > 0, true);
 
-        // Stop session
-        yield* provider.stopSession({ threadId: session.threadId });
-      }).pipe(Effect.provide(fixture.layer));
-    }).pipe(Effect.provide(NodeServices.layer)),
+          const snapshot = yield* fixture.harness.adapter.readThread(threadId);
+          assert.equal(snapshot.turns.length, 1);
+        }).pipe(Effect.provide(fixture.layer));
+      }).pipe(Effect.provide(NodeServices.layer)),
   );
 
-  it.effect("returns capabilities for registered providers", () =>
+  it.effect(`provider contract: ${providerKind} enforces rollback capability`, () =>
     Effect.gen(function* () {
-      const fixture = yield* makeContractFixture;
+      const fixture = yield* makeIntegrationFixture(providerKind);
 
       yield* Effect.gen(function* () {
-        const provider = yield* ProviderService;
-        const caps = yield* provider.getCapabilities("codex");
-
-        assert.isString(caps.sessionModelSwitch);
-        assert.isBoolean(caps.supportsUserInput);
-        assert.isBoolean(caps.supportsRollback);
-        assert.isBoolean(caps.supportsFileChangeApproval);
-      }).pipe(Effect.provide(fixture.layer));
-    }).pipe(Effect.provide(NodeServices.layer)),
-  );
-});
-
-// ---------------------------------------------------------------------------
-// Contract: Rollback
-// ---------------------------------------------------------------------------
-
-describe.skipIf(!capabilities.supportsRollback)("Provider Contract: rollback", () => {
-  it.effect("rolls back N turns", () =>
-    Effect.gen(function* () {
-      const fixture = yield* makeContractFixture;
-
-      yield* Effect.gen(function* () {
-        const provider = yield* ProviderService;
-
-        const session = yield* provider.startSession(ThreadId.makeUnsafe("contract-rollback-1"), {
-          threadId: ThreadId.makeUnsafe("contract-rollback-1"),
-          provider: "codex",
+        const providerService = yield* ProviderService;
+        const threadId = ThreadId.makeUnsafe(`thread-rollback-${providerKind}`);
+        yield* providerService.startSession(threadId, {
+          threadId,
+          provider: providerKind,
           cwd: fixture.cwd,
           runtimeMode: "full-access",
         });
 
-        // Send two turns
-        yield* runTurn({
-          provider,
+        yield* queueTextTurn({
+          provider: providerService,
           harness: fixture.harness,
-          threadId: session.threadId,
-          userText: "turn 1",
-          response: { events: codexTurnTextFixture },
-        });
-        yield* runTurn({
-          provider,
-          harness: fixture.harness,
-          threadId: session.threadId,
-          userText: "turn 2",
-          response: { events: codexTurnTextFixture },
+          threadId,
+          text: "rollback me",
         });
 
-        // Rollback 1 turn
-        yield* provider.rollbackConversation({
-          threadId: session.threadId,
-          numTurns: 1,
-        });
+        const capabilities = yield* providerService.getCapabilities(providerKind);
+        const rollbackResult = yield* Effect.exit(
+          providerService.rollbackConversation({ threadId, numTurns: 1 }),
+        );
 
-        const rollbackCalls = fixture.harness.getRollbackCalls(session.threadId);
-        assert.deepEqual(rollbackCalls, [1]);
-
-        yield* provider.stopSession({ threadId: session.threadId });
+        if (capabilities.supportsRollback) {
+          assert.equal(Exit.isSuccess(rollbackResult), true);
+          assert.deepEqual(fixture.harness.getRollbackCalls(threadId), [1]);
+        } else {
+          assert.equal(Exit.isFailure(rollbackResult), true);
+          if (Exit.isFailure(rollbackResult)) {
+            assert.equal(
+              Schema.is(ProviderAdapterValidationError)(Cause.squash(rollbackResult.cause)),
+              true,
+            );
+          }
+        }
       }).pipe(Effect.provide(fixture.layer));
     }).pipe(Effect.provide(NodeServices.layer)),
   );
-});
 
-// ---------------------------------------------------------------------------
-// Contract: Resume (session recovery)
-// ---------------------------------------------------------------------------
-
-describe.skipIf(!capabilities.supportsResume)("Provider Contract: resume", () => {
-  it.effect("starts a session with a resume cursor", () =>
+  it.effect(`provider contract: ${providerKind} enforces user-input capability`, () =>
     Effect.gen(function* () {
-      const fixture = yield* makeContractFixture;
+      const fixture = yield* makeIntegrationFixture(providerKind);
 
       yield* Effect.gen(function* () {
-        const provider = yield* ProviderService;
-
-        const session = yield* provider.startSession(ThreadId.makeUnsafe("contract-resume-1"), {
-          threadId: ThreadId.makeUnsafe("contract-resume-1"),
-          provider: "codex",
-          cwd: fixture.cwd,
-          runtimeMode: "full-access",
-          resumeCursor: { threadId: "existing-thread" },
-        });
-
-        assert.equal(session.status, "ready");
-        assert.isDefined(session.resumeCursor);
-
-        yield* provider.stopSession({ threadId: session.threadId });
-      }).pipe(Effect.provide(fixture.layer));
-    }).pipe(Effect.provide(NodeServices.layer)),
-  );
-});
-
-// ---------------------------------------------------------------------------
-// Contract: Approval flow
-// ---------------------------------------------------------------------------
-
-describe.skipIf(!capabilities.supportsFileChangeApproval)("Provider Contract: approval", () => {
-  it.effect("handles approval request and response flow", () =>
-    Effect.gen(function* () {
-      const fixture = yield* makeContractFixture;
-
-      yield* Effect.gen(function* () {
-        const provider = yield* ProviderService;
-
-        const session = yield* provider.startSession(ThreadId.makeUnsafe("contract-approval-1"), {
-          threadId: ThreadId.makeUnsafe("contract-approval-1"),
-          provider: "codex",
+        const providerService = yield* ProviderService;
+        const threadId = ThreadId.makeUnsafe(`thread-input-${providerKind}`);
+        yield* providerService.startSession(threadId, {
+          threadId,
+          provider: providerKind,
           cwd: fixture.cwd,
           runtimeMode: "full-access",
         });
 
-        // Run a turn with an approval request in the fixture events
-        const events = yield* runTurn({
-          provider,
-          harness: fixture.harness,
-          threadId: session.threadId,
-          userText: "make a change requiring approval",
-          response: { events: codexTurnApprovalFixture },
-        });
+        const capabilities = yield* providerService.getCapabilities(providerKind);
+        const userInputResult = yield* Effect.exit(
+          providerService.respondToUserInput({
+            threadId,
+            requestId: ApprovalRequestId.makeUnsafe("req-user-input"),
+            answers: { answer: "yes" },
+          }),
+        );
 
-        // The fixture contains an approval request event
-        const requestEvent = events.find((e) => e.type === "request.opened");
-        assert.isDefined(requestEvent);
-
-        yield* provider.stopSession({ threadId: session.threadId });
+        if (capabilities.supportsUserInput) {
+          assert.equal(Exit.isSuccess(userInputResult), true);
+        } else {
+          assert.equal(Exit.isFailure(userInputResult), true);
+          if (Exit.isFailure(userInputResult)) {
+            assert.equal(
+              Schema.is(ProviderAdapterValidationError)(Cause.squash(userInputResult.cause)),
+              true,
+            );
+          }
+        }
       }).pipe(Effect.provide(fixture.layer));
     }).pipe(Effect.provide(NodeServices.layer)),
   );
-});
+}
 
-// ---------------------------------------------------------------------------
-// Contract: User Input
-// ---------------------------------------------------------------------------
-
-describe.skipIf(!capabilities.supportsUserInput)("Provider Contract: user-input", () => {
-  it.effect("adapter declares user-input support in capabilities", () =>
+for (const providerKind of PROVIDERS) {
+  it.effect(`provider contract: ${providerKind} persists MCP refs according to capability`, () =>
     Effect.gen(function* () {
-      const fixture = yield* makeContractFixture;
+      const fixture = yield* makeIntegrationFixture(providerKind);
 
       yield* Effect.gen(function* () {
-        const provider = yield* ProviderService;
-        const caps = yield* provider.getCapabilities("codex");
-        assert.isTrue(caps.supportsUserInput);
-      }).pipe(Effect.provide(fixture.layer));
-    }).pipe(Effect.provide(NodeServices.layer)),
-  );
-});
+        const providerService = yield* ProviderService;
+        const runtimeRepository = yield* ProviderSessionRuntimeRepository;
+        const threadId = ThreadId.makeUnsafe(`thread-mcp-${providerKind}`);
 
-// ---------------------------------------------------------------------------
-// Contract: Tool/file-change flow
-// ---------------------------------------------------------------------------
-
-describe("Provider Contract: tool execution", () => {
-  it.effect("runs a turn with tool/file-change events", () =>
-    Effect.gen(function* () {
-      const fixture = yield* makeContractFixture;
-      const { join } = yield* Path.Path;
-      const { writeFileString } = yield* FileSystem.FileSystem;
-
-      yield* Effect.gen(function* () {
-        const provider = yield* ProviderService;
-        const session = yield* provider.startSession(ThreadId.makeUnsafe("contract-tools-1"), {
-          threadId: ThreadId.makeUnsafe("contract-tools-1"),
-          provider: "codex",
+        yield* providerService.startSession(threadId, {
+          threadId,
+          provider: providerKind,
           cwd: fixture.cwd,
           runtimeMode: "full-access",
         });
 
-        const events = yield* runTurn({
-          provider,
-          harness: fixture.harness,
-          threadId: session.threadId,
-          userText: "make a file change",
-          response: {
-            events: codexTurnToolFixture,
-            mutateWorkspace: ({ cwd }) =>
-              writeFileString(join(cwd, "README.md"), "v2\n").pipe(Effect.asVoid, Effect.ignore),
-          },
-        });
+        const runtime = yield* runtimeRepository.getByThreadId({ threadId });
+        assert.equal(runtime._tag, "Some");
+        if (runtime._tag !== "Some") {
+          return;
+        }
 
-        assert.isAbove(events.length, 0);
-        yield* provider.stopSession({ threadId: session.threadId });
+        const payload = runtime.value.runtimePayload;
+        assert.equal(
+          payload !== null && typeof payload === "object" && !Array.isArray(payload),
+          true,
+        );
+        if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+          return;
+        }
+
+        const capabilities = yield* providerService.getCapabilities(providerKind);
+        const mcpConfigRef = "mcpConfigRef" in payload ? payload.mcpConfigRef : undefined;
+
+        if (capabilities.mcpConfig === "none") {
+          assert.equal(mcpConfigRef, undefined);
+          assert.equal(
+            fixture.analyticsEvents.some(
+              (entry) =>
+                entry.event === "mcp.config.deferred" &&
+                entry.properties?.provider === providerKind &&
+                entry.properties?.reason === "provider-capability-none",
+            ),
+            true,
+          );
+        } else {
+          assert.equal(typeof mcpConfigRef === "object" && mcpConfigRef !== null, true);
+          if (mcpConfigRef && typeof mcpConfigRef === "object") {
+            const ref = mcpConfigRef as {
+              version?: unknown;
+              serverCount?: unknown;
+              sourcePaths?: unknown;
+            };
+            assert.equal(ref.version, "mcp-v1");
+            assert.equal(ref.serverCount, 1);
+            assert.deepEqual(ref.sourcePaths, ["/workspace/.t3/mcp.json"]);
+          }
+          assert.equal(
+            fixture.analyticsEvents.some(
+              (entry) =>
+                entry.event === "mcp.config.accepted" &&
+                entry.properties?.provider === providerKind &&
+                entry.properties?.serverCount === 1,
+            ),
+            true,
+          );
+        }
       }).pipe(Effect.provide(fixture.layer));
     }).pipe(Effect.provide(NodeServices.layer)),
   );
-});
+}

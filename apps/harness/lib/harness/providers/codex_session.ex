@@ -17,6 +17,7 @@ defmodule Harness.Providers.CodexSession do
   @behaviour Harness.Providers.ProviderBehaviour
 
   use GenServer, restart: :temporary
+  @behaviour Harness.ProviderSession
 
   alias Harness.JsonRpc
   alias Harness.Event

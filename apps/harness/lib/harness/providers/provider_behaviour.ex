@@ -9,13 +9,14 @@ defmodule Harness.Providers.ProviderBehaviour do
   ## Required callbacks
 
   - `start_link/1` - Start a provider session GenServer.
+  - `wait_for_ready/2` - Block until the provider startup handshake is ready for SessionManager dispatch.
   - `send_turn/2` - Send a conversational turn to the provider.
   - `interrupt_turn/3` - Interrupt an active turn.
   - `respond_to_approval/3` - Respond to an approval request.
   - `respond_to_user_input/3` - Respond to a user input request.
   - `read_thread/2` - Read the current thread snapshot.
   - `rollback_thread/3` - Roll back the thread by N turns.
-  - `stop/1` - Stop the session GenServer.
+  - `stop/1` - Optional provider-local shutdown helper; SessionManager shutdowns are handled by the supervisor rather than dispatching `stop/1`.
 
   ## Usage
 
@@ -40,6 +41,14 @@ defmodule Harness.Providers.ProviderBehaviour do
   - `:event_callback` - Function to call with provider events
   """
   @callback start_link(opts :: map()) :: GenServer.on_start()
+
+  @doc """
+  Wait for the provider session to become ready.
+
+  Called by SessionManager after `start_link/1` so providers can block until
+  CLI bootstrap, handshake, or auth readiness is complete.
+  """
+  @callback wait_for_ready(pid :: pid(), timeout :: timeout()) :: :ok | {:error, term()}
 
   @doc """
   Send a conversational turn to the provider.
@@ -76,11 +85,11 @@ defmodule Harness.Providers.ProviderBehaviour do
               {:ok, map()} | {:error, term()}
 
   @doc """
-  Stop the session. Called by SessionManager when cleaning up.
+  Stop the session if the provider module exposes an explicit shutdown helper.
 
-  Note: Most session modules rely on DynamicSupervisor.terminate_child/2
-  rather than an explicit stop callback. This callback is provided for
-  cases where graceful shutdown logic is needed.
+  SessionManager does not dispatch `stop/1`; normal shutdown is handled by the
+  supervisor tree. Implement this only when the provider needs an explicit
+  escape hatch for manual cleanup paths.
   """
   @callback stop(pid :: pid()) :: :ok | {:error, term()}
 end

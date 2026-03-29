@@ -59,6 +59,7 @@ import {
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import { ServerConfig } from "../../config.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
+import { DIRECT_PROVIDER_CAPABILITIES } from "../providerCapabilities.ts";
 import { getClaudeModelCapabilities } from "./ClaudeProvider.ts";
 import {
   ProviderAdapterProcessError,
@@ -3107,17 +3108,7 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
 
     return {
       provider: PROVIDER,
-      capabilities: {
-        sessionModelSwitch: "in-session",
-        supportsUserInput: true,
-        supportsRollback: true,
-        supportsFileChangeApproval: true,
-        resume: "none",
-        subagents: "none",
-        attachments: "full",
-        replay: "full",
-        mcpConfig: "none",
-      },
+      capabilities: DIRECT_PROVIDER_CAPABILITIES.claudeAgent,
       startSession,
       sendTurn,
       interruptTurn,
@@ -3129,9 +3120,6 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
       listSessions,
       hasSession,
       stopAll,
-      // Claude manages its own MCP natively through the Agent SDK.
-      // The translator always returns null — external MCP config is ignored.
-      translateMcpConfig: () => Effect.succeed(null),
       streamEvents: Stream.fromQueue(runtimeEventQueue),
     } satisfies ClaudeAdapterShape;
   });

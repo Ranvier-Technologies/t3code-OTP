@@ -7,12 +7,14 @@ import { Effect, FileSystem, Layer, Path, Queue, Stream } from "effect";
 
 import { ProviderUnsupportedError } from "../src/provider/Errors.ts";
 import { ProviderAdapterRegistry } from "../src/provider/Services/ProviderAdapterRegistry.ts";
+import { McpConfigService } from "../src/provider/Services/McpConfig.ts";
 import { ProviderSessionDirectoryLive } from "../src/provider/Layers/ProviderSessionDirectory.ts";
 import { makeProviderServiceLive } from "../src/provider/Layers/ProviderService.ts";
 import {
   ProviderService,
   type ProviderServiceShape,
 } from "../src/provider/Services/ProviderService.ts";
+import { ServerConfig } from "../src/config.ts";
 import { ServerSettingsService } from "../src/serverSettings.ts";
 import { AnalyticsService } from "../src/telemetry/Services/AnalyticsService.ts";
 import { SqlitePersistenceMemory } from "../src/persistence/Layers/Sqlite.ts";
@@ -65,11 +67,14 @@ const makeIntegrationFixture = Effect.gen(function* () {
     Layer.succeed(ProviderAdapterRegistry, registry),
     ServerSettingsService.layerTest(DEFAULT_SERVER_SETTINGS),
     AnalyticsService.layerTest,
+    McpConfigService.layerTest(),
   ).pipe(Layer.provide(SqlitePersistenceMemory));
 
   const layer = makeProviderServiceLive().pipe(
     Layer.provide(shared),
     Layer.provide(McpConfigServiceLive),
+    Layer.provideMerge(ServerConfig.layerTest(cwd, { prefix: "provider-service-int-" })),
+    Layer.provideMerge(NodeServices.layer),
   );
 
   return {

@@ -16,7 +16,6 @@ import type {
   ProviderSendTurnInput,
   ProviderSession,
   ProviderSessionStartInput,
-  ResolvedMcpConfig,
   ThreadId,
   ProviderTurnStartResult,
   TurnId,
@@ -25,15 +24,6 @@ import type { Effect } from "effect";
 import type { Stream } from "effect";
 
 export type ProviderSessionModelSwitchMode = "in-session" | "restart-session" | "unsupported";
-
-/**
- * Graduated capability level for provider features.
- *
- * - `"none"` — the provider does not support this capability at all.
- * - `"basic"` — partial / limited support (e.g. attachments only for certain formats).
- * - `"full"` — complete support with no known limitations.
- */
-export type CapabilityLevel = "none" | "basic" | "full";
 
 export interface ProviderAdapterCapabilities {
   /**
@@ -46,19 +36,16 @@ export interface ProviderAdapterCapabilities {
   readonly supportsRollback: boolean;
   /** Whether this provider supports file-change approval requests. */
   readonly supportsFileChangeApproval: boolean;
-
-  // --- Graduated capabilities ---
-
-  /** Session resume capability. */
-  readonly resume: CapabilityLevel;
-  /** Sub-agent spawning capability. */
-  readonly subagents: CapabilityLevel;
-  /** File / image attachment capability. */
-  readonly attachments: CapabilityLevel;
-  /** Conversation replay capability. */
-  readonly replay: CapabilityLevel;
-  /** MCP server configuration capability. */
-  readonly mcpConfig: CapabilityLevel;
+  /** Whether the provider can resume prior sessions. */
+  readonly resume: "none" | "basic" | "full";
+  /** Whether the provider supports collaboration/subagent flows. */
+  readonly subagents: "none" | "basic" | "full";
+  /** Whether the provider accepts turn attachments. */
+  readonly attachments: "none" | "basic" | "full";
+  /** Whether the provider can replay prior runtime history. */
+  readonly replay: "none" | "basic" | "full";
+  /** Whether the provider accepts central MCP configuration. */
+  readonly mcpConfig: "none" | "basic" | "full";
 }
 
 export interface ProviderThreadTurnSnapshot {
@@ -147,17 +134,6 @@ export interface ProviderAdapterShape<TError> {
    * Stop all sessions owned by this adapter.
    */
   readonly stopAll: () => Effect.Effect<void, TError>;
-
-  /**
-   * Translate a resolved MCP config into provider-native parameters.
-   *
-   * Returns a JSON-serializable object to include in start_session params,
-   * or null if the provider does not accept external MCP configuration
-   * (e.g., Claude manages its own MCP natively).
-   */
-  readonly translateMcpConfig: (
-    config: ResolvedMcpConfig,
-  ) => Effect.Effect<Record<string, unknown> | null>;
 
   /**
    * Canonical runtime event stream emitted by this adapter.

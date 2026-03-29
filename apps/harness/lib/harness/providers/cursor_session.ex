@@ -11,6 +11,7 @@ defmodule Harness.Providers.CursorSession do
   @behaviour Harness.Providers.ProviderBehaviour
 
   use GenServer, restart: :temporary
+  @behaviour Harness.ProviderSession
 
   alias Harness.Event
 

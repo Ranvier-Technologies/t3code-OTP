@@ -4,6 +4,7 @@ import {
   ApprovalRequestId,
   EventId,
   IsoDateTime,
+  NonNegativeInt,
   ProviderItemId,
   ThreadId,
   TurnId,
@@ -24,40 +25,21 @@ import {
 } from "./orchestration";
 
 /**
- * Provider session lifecycle state machine.
+ * Provider session state machine:
  *
- * ```
- *   +-----------+      session started       +-------+
- *   |connecting | --------------------------> | ready |
- *   +-----------+                             +-------+
- *        |                                     |    ^
- *        | (fatal)                 sendTurn /  |    | turn completes /
- *        v                        resume      v    | interrupt
- *   +---------+                            +---------+
- *   |  error  | <------------------------- | running |
- *   +---------+         (runtime error)    +---------+
- *        |                                     |
- *        |  stopSession                        |  stopSession
- *        v                                     v
- *   +---------+                            +---------+
- *   | closed  | <----- stopSession ------- | closed  |
- *   +---------+                            +---------+
- * ```
+ *   ┌────────────┐
+ *   │ connecting  │──→ ready ──→ running ──→ closed
+ *   └────────────┘       │         │
+ *        │               │         │
+ *        └───────────────┴─────────┴──→ error ──→ closed
  *
- * **Transitions**:
- * - `connecting -> ready`   : adapter has initialized and the provider process is responsive.
- * - `connecting -> error`   : initial connection / spawn failed.
- * - `ready -> running`      : a turn has been dispatched (sendTurn / resume).
- * - `running -> ready`      : the turn completed or was interrupted.
- * - `running -> error`      : an unrecoverable runtime error occurred mid-turn.
- * - `error -> closed`       : stopSession called after an error.
- * - `ready -> closed`       : stopSession called on an idle session.
- * - `running -> closed`     : stopSession called on a running session (interrupts first).
- *
- * **Invariants**:
- * - `closed` is a terminal state; no outbound transitions are allowed.
- * - `error` may transition only to `closed` (manual recovery requires a new session).
- * - Only one turn may be active per session (`running` is exclusive).
+ * Transitions:
+ *   connecting → ready    : provider handshake complete
+ *   ready      → running  : first turn sent
+ *   running    → ready    : turn completed (idle)
+ *   running    → closed   : session stopped normally
+ *   *          → error    : unrecoverable provider error
+ *   error      → closed   : cleanup complete
  */
 const ProviderSessionStatus = Schema.Literals([
   "connecting",
@@ -93,6 +75,47 @@ export const ProviderSessionStartInput = Schema.Struct({
   runtimeMode: RuntimeMode,
 });
 export type ProviderSessionStartInput = typeof ProviderSessionStartInput.Type;
+
+export const McpTransport = Schema.Literals(["stdio", "http", "sse"]);
+export type McpTransport = typeof McpTransport.Type;
+
+const McpRemoteTransport = Schema.Literals(["http", "sse"]);
+
+const McpStdioServerConfig = Schema.Struct({
+  name: TrimmedNonEmptyString,
+  transport: Schema.Literal("stdio"),
+  command: TrimmedNonEmptyString,
+  args: Schema.optional(Schema.Array(Schema.String)),
+  env: Schema.optional(Schema.Record(Schema.String, Schema.String)),
+  enabled: Schema.Boolean,
+});
+
+const McpRemoteServerConfig = Schema.Struct({
+  name: TrimmedNonEmptyString,
+  transport: McpRemoteTransport,
+  url: TrimmedNonEmptyString,
+  env: Schema.optional(Schema.Record(Schema.String, Schema.String)),
+  enabled: Schema.Boolean,
+});
+
+export const McpServerConfig = Schema.Union([McpStdioServerConfig, McpRemoteServerConfig]);
+export type McpServerConfig = typeof McpServerConfig.Type;
+
+export const ResolvedMcpConfig = Schema.Struct({
+  version: TrimmedNonEmptyString,
+  resolvedAt: IsoDateTime,
+  sourcePaths: Schema.Array(TrimmedNonEmptyString),
+  servers: Schema.Array(McpServerConfig),
+});
+export type ResolvedMcpConfig = typeof ResolvedMcpConfig.Type;
+
+export const PersistedMcpConfigRef = Schema.Struct({
+  version: TrimmedNonEmptyString,
+  resolvedAt: IsoDateTime,
+  sourcePaths: Schema.Array(TrimmedNonEmptyString),
+  serverCount: NonNegativeInt,
+});
+export type PersistedMcpConfigRef = typeof PersistedMcpConfigRef.Type;
 
 export const ProviderSendTurnInput = Schema.Struct({
   threadId: ThreadId,
@@ -157,25 +180,3 @@ export const ProviderEvent = Schema.Struct({
   payload: Schema.optional(Schema.Unknown),
 });
 export type ProviderEvent = typeof ProviderEvent.Type;
-
-// ---------------------------------------------------------------------------
-// MCP Config Schemas
-// ---------------------------------------------------------------------------
-
-export const McpServerConfig = Schema.Struct({
-  name: TrimmedNonEmptyString,
-  command: TrimmedNonEmptyString,
-  args: Schema.Array(Schema.String),
-  env: Schema.optional(Schema.Record(Schema.String, Schema.String)),
-  enabled: Schema.Boolean,
-});
-export type McpServerConfig = typeof McpServerConfig.Type;
-
-export const ResolvedMcpConfig = Schema.Struct({
-  /** Hash of the resolved config for change detection. */
-  version: TrimmedNonEmptyString,
-  servers: Schema.Array(McpServerConfig),
-  /** ISO timestamp of when config was resolved. */
-  resolvedAt: IsoDateTime,
-});
-export type ResolvedMcpConfig = typeof ResolvedMcpConfig.Type;

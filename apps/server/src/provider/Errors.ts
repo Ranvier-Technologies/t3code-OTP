@@ -2,98 +2,6 @@ import { Schema } from "effect";
 
 import type { CheckpointServiceError } from "../checkpointing/Errors.ts";
 
-// ---------------------------------------------------------------------------
-// Error taxonomy
-// ---------------------------------------------------------------------------
-
-/**
- * Error category for provider errors.
- *
- * - `"transient"` — temporary failure that may succeed on retry (network timeout, rate-limit).
- * - `"permanent"` — unrecoverable error (bad request, auth failure, missing resource).
- * - `"configuration"` — misconfigured provider or environment (wrong API key, missing binary).
- * - `"unavailable"` — provider is down or unreachable (graceful degradation path).
- */
-export type ProviderErrorCategory = "transient" | "permanent" | "configuration" | "unavailable";
-
-/**
- * Classify a provider error into a recovery-actionable category.
- *
- * Recovery strategies per category:
- * - transient      -> retry with exponential backoff
- * - permanent      -> fail immediately and report to the user
- * - configuration  -> re-resolve configuration / prompt user to fix settings
- * - unavailable    -> degrade gracefully (e.g. mark provider as offline)
- */
-export function classifyProviderError(
-  error:
-    | ProviderAdapterError
-    | ProviderValidationError
-    | ProviderUnsupportedError
-    | ProviderSessionNotFoundError
-    | ProviderSessionDirectoryPersistenceError,
-): ProviderErrorCategory {
-  const tag = (error as { readonly _tag: string })._tag;
-
-  switch (tag) {
-    case "ProviderAdapterRequestError": {
-      // Request errors are generally transient (timeout, network) unless the
-      // detail indicates a permanent issue.
-      const detail = ((error as ProviderAdapterRequestError).detail ?? "").toLowerCase();
-      if (
-        detail.includes("timeout") ||
-        detail.includes("rate limit") ||
-        detail.includes("econnreset") ||
-        detail.includes("econnrefused") ||
-        detail.includes("socket hang up")
-      ) {
-        return "transient";
-      }
-      if (
-        detail.includes("not found") ||
-        detail.includes("unauthorized") ||
-        detail.includes("forbidden")
-      ) {
-        return "permanent";
-      }
-      // Default request errors to transient — safer to retry.
-      return "transient";
-    }
-
-    case "ProviderAdapterProcessError": {
-      const detail = ((error as ProviderAdapterProcessError).detail ?? "").toLowerCase();
-      if (
-        detail.includes("not found") ||
-        detail.includes("enoent") ||
-        detail.includes("permission denied")
-      ) {
-        return "configuration";
-      }
-      if (detail.includes("crashed") || detail.includes("signal")) {
-        return "unavailable";
-      }
-      return "transient";
-    }
-
-    case "ProviderAdapterValidationError":
-    case "ProviderAdapterSessionNotFoundError":
-    case "ProviderAdapterSessionClosedError":
-    case "ProviderValidationError":
-    case "ProviderSessionNotFoundError":
-      return "permanent";
-
-    case "ProviderUnsupportedError":
-      return "configuration";
-
-    case "ProviderSessionDirectoryPersistenceError":
-      return "transient";
-
-    default:
-      // Fallback — treat unknown errors as transient to allow retry.
-      return "transient";
-  }
-}
-
 /**
  * ProviderAdapterValidationError - Invalid adapter API input.
  */
@@ -239,19 +147,6 @@ export class ProviderSessionDirectoryPersistenceError extends Schema.TaggedError
   }
 }
 
-/**
- * McpConfigError - MCP configuration resolution failure.
- */
-export class McpConfigError extends Schema.TaggedErrorClass<McpConfigError>()("McpConfigError", {
-  operation: Schema.String,
-  detail: Schema.String,
-  cause: Schema.optional(Schema.Defect),
-}) {
-  override get message(): string {
-    return `MCP config error in ${this.operation}: ${this.detail}`;
-  }
-}
-
 export type ProviderAdapterError =
   | ProviderAdapterValidationError
   | ProviderAdapterSessionNotFoundError
@@ -265,5 +160,163 @@ export type ProviderServiceError =
   | ProviderSessionNotFoundError
   | ProviderSessionDirectoryPersistenceError
   | ProviderAdapterError
-  | CheckpointServiceError
-  | McpConfigError;
+  | CheckpointServiceError;
+
+export type ProviderErrorCategory =
+  | "transient"
+  | "permanent"
+  | "configuration"
+  | "provider-unavailable";
+
+export type ProviderRecoveryStrategy =
+  | "retry-backoff"
+  | "fail-fast"
+  | "re-resolve-config"
+  | "fresh-session"
+  | "degrade-gracefully"
+  | "restart-session";
+
+export interface ProviderErrorClassification {
+  readonly category: ProviderErrorCategory;
+  /**
+   * Telemetry-only label for the recovery path we would ideally enact.
+   *
+   * ProviderService records this strategy today, but it does not yet drive
+   * control flow directly.
+   */
+  readonly recoveryStrategy: ProviderRecoveryStrategy;
+  readonly recoverable: boolean;
+}
+
+function requestErrorClassification(detail: string): ProviderErrorClassification {
+  const normalized = detail.toLowerCase();
+
+  if (
+    normalized.includes("timed out") ||
+    normalized.includes("timeout") ||
+    normalized.includes("rate limit") ||
+    normalized.includes("temporarily unavailable") ||
+    normalized.includes("socket hang up") ||
+    normalized.includes("econnreset") ||
+    normalized.includes("503")
+  ) {
+    return {
+      category: "transient",
+      recoveryStrategy: "retry-backoff",
+      recoverable: true,
+    };
+  }
+
+  if (
+    normalized.includes("resume cursor") ||
+    normalized.includes("invalid cursor") ||
+    normalized.includes("session not found") ||
+    normalized.includes("unknown pending approval request") ||
+    normalized.includes("unknown pending user-input request")
+  ) {
+    return {
+      category: "configuration",
+      recoveryStrategy: "fresh-session",
+      recoverable: true,
+    };
+  }
+
+  if (
+    normalized.includes("not installed") ||
+    normalized.includes("enoent") ||
+    normalized.includes("binary") ||
+    (normalized.includes("harness") && normalized.includes("not running"))
+  ) {
+    return {
+      category: "provider-unavailable",
+      recoveryStrategy: "degrade-gracefully",
+      recoverable: true,
+    };
+  }
+
+  return {
+    category: "permanent",
+    recoveryStrategy: "fail-fast",
+    recoverable: false,
+  };
+}
+
+export function classifyProviderError(error: unknown): ProviderErrorClassification {
+  if (
+    Schema.is(ProviderAdapterValidationError)(error) ||
+    Schema.is(ProviderValidationError)(error)
+  ) {
+    return {
+      category: "permanent",
+      recoveryStrategy: "fail-fast",
+      recoverable: false,
+    };
+  }
+
+  if (
+    Schema.is(ProviderAdapterSessionNotFoundError)(error) ||
+    Schema.is(ProviderSessionNotFoundError)(error)
+  ) {
+    return {
+      category: "configuration",
+      recoveryStrategy: "fresh-session",
+      recoverable: true,
+    };
+  }
+
+  if (Schema.is(ProviderAdapterSessionClosedError)(error)) {
+    return {
+      category: "transient",
+      recoveryStrategy: "restart-session",
+      recoverable: true,
+    };
+  }
+
+  if (Schema.is(ProviderAdapterRequestError)(error)) {
+    return requestErrorClassification(error.detail);
+  }
+
+  if (Schema.is(ProviderAdapterProcessError)(error)) {
+    const normalized = error.detail.toLowerCase();
+    if (
+      normalized.includes("not installed") ||
+      normalized.includes("enoent") ||
+      normalized.includes("no such file") ||
+      normalized.includes("binary")
+    ) {
+      return {
+        category: "provider-unavailable",
+        recoveryStrategy: "degrade-gracefully",
+        recoverable: true,
+      };
+    }
+
+    return {
+      category: "transient",
+      recoveryStrategy: "restart-session",
+      recoverable: true,
+    };
+  }
+
+  if (Schema.is(ProviderUnsupportedError)(error)) {
+    return {
+      category: "provider-unavailable",
+      recoveryStrategy: "degrade-gracefully",
+      recoverable: true,
+    };
+  }
+
+  if (Schema.is(ProviderSessionDirectoryPersistenceError)(error)) {
+    return {
+      category: "configuration",
+      recoveryStrategy: "re-resolve-config",
+      recoverable: true,
+    };
+  }
+
+  return {
+    category: "permanent",
+    recoveryStrategy: "fail-fast",
+    recoverable: false,
+  };
+}

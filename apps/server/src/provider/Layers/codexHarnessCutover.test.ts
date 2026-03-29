@@ -7,7 +7,7 @@
  *   3. adapter_key migration maps correctly
  *   4. resume_cursor validation
  */
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, afterEach } from "vitest";
 
 // ---------------------------------------------------------------------------
 // 1. adapter_key migration

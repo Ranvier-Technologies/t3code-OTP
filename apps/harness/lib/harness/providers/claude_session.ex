@@ -17,6 +17,7 @@ defmodule Harness.Providers.ClaudeSession do
   @behaviour Harness.Providers.ProviderBehaviour
 
   use GenServer, restart: :temporary
+  @behaviour Harness.ProviderSession
 
   alias Harness.Event
 

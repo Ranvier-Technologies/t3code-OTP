@@ -29,8 +29,9 @@ import {
   ProviderValidationError,
   type ProviderAdapterError,
 } from "../Errors.ts";
-import type { ProviderAdapterCapabilities, ProviderAdapterShape } from "../Services/ProviderAdapter.ts";
+import type { ProviderAdapterShape } from "../Services/ProviderAdapter.ts";
 import { ProviderAdapterRegistry } from "../Services/ProviderAdapterRegistry.ts";
+import { McpConfigService } from "../Services/McpConfig.ts";
 import { ProviderService } from "../Services/ProviderService.ts";
 import { ProviderSessionDirectory } from "../Services/ProviderSessionDirectory.ts";
 import { makeProviderServiceLive } from "./ProviderService.ts";
@@ -44,9 +45,9 @@ import {
 } from "../../persistence/Layers/Sqlite.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { AnalyticsService } from "../../telemetry/Services/AnalyticsService.ts";
-import { McpConfigServiceLive } from "./McpConfig.ts";
 
 const defaultServerSettingsLayer = ServerSettingsService.layerTest();
+const emptyMcpConfigLayer = McpConfigService.layerTest();
 
 const asRequestId = (value: string): ApprovalRequestId => ApprovalRequestId.makeUnsafe(value);
 const asEventId = (value: string): EventId => EventId.makeUnsafe(value);
@@ -187,7 +188,7 @@ function makeFakeCodexAdapter(provider: ProviderKind = "codex") {
       subagents: "none",
       attachments: "basic",
       replay: "full",
-      mcpConfig: "none",
+      mcpConfig: "basic",
     },
     startSession,
     sendTurn,
@@ -200,7 +201,6 @@ function makeFakeCodexAdapter(provider: ProviderKind = "codex") {
     readThread,
     rollbackThread,
     stopAll,
-    translateMcpConfig: () => Effect.succeed(null),
     streamEvents: Stream.fromPubSub(runtimeEventPubSub),
   };
 
@@ -240,6 +240,23 @@ function makeFakeCodexAdapter(provider: ProviderKind = "codex") {
 const sleep = (ms: number) =>
   Effect.promise(() => new Promise<void>((resolve) => setTimeout(resolve, ms)));
 
+const waitForRecordedEvent = (
+  analyticsSpy: {
+    readonly recorded: Array<{ readonly event: string }>;
+  },
+  event: string,
+  attempts = 20,
+  delayMs = 10,
+) =>
+  Effect.gen(function* () {
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      if (analyticsSpy.recorded.some((entry) => entry.event === event)) {
+        return;
+      }
+      yield* sleep(delayMs);
+    }
+  });
+
 function makeProviderServiceLayer() {
   const codex = makeFakeCodexAdapter();
   const claude = makeFakeCodexAdapter("claudeAgent");
@@ -265,8 +282,8 @@ function makeProviderServiceLayer() {
         Layer.provide(providerAdapterLayer),
         Layer.provide(directoryLayer),
         Layer.provide(defaultServerSettingsLayer),
-        Layer.provide(McpConfigServiceLive),
         Layer.provideMerge(AnalyticsService.layerTest),
+        Layer.provide(emptyMcpConfigLayer),
       ),
       directoryLayer,
 
@@ -278,6 +295,23 @@ function makeProviderServiceLayer() {
   return {
     codex,
     claude,
+    layer,
+  };
+}
+
+function makeAnalyticsSpyLayer() {
+  const recorded: Array<{ event: string; properties?: Readonly<Record<string, unknown>> }> = [];
+
+  const layer = Layer.succeed(AnalyticsService, {
+    record: (event: string, properties?: Readonly<Record<string, unknown>>) =>
+      Effect.sync(() => {
+        recorded.push({ event, ...(properties ? { properties } : {}) });
+      }),
+    flush: Effect.void,
+  });
+
+  return {
+    recorded,
     layer,
   };
 }
@@ -311,8 +345,8 @@ it.effect("ProviderServiceLive rejects new sessions for disabled providers", () 
       Layer.provide(providerAdapterLayer),
       Layer.provide(directoryLayer),
       Layer.provide(serverSettingsLayer),
-      Layer.provide(McpConfigServiceLive),
       Layer.provide(AnalyticsService.layerTest),
+      Layer.provide(emptyMcpConfigLayer),
     );
 
     const failure = yield* Effect.flip(
@@ -333,6 +367,79 @@ it.effect("ProviderServiceLive rejects new sessions for disabled providers", () 
 );
 
 const routing = makeProviderServiceLayer();
+it.effect(
+  "ProviderServiceLive emits structured lifecycle telemetry with adapter path and durations",
+  () =>
+    Effect.gen(function* () {
+      const analyticsSpy = makeAnalyticsSpyLayer();
+      const codex = makeFakeCodexAdapter();
+      const registry: typeof ProviderAdapterRegistry.Service = {
+        getByProvider: (provider) =>
+          provider === "codex"
+            ? Effect.succeed(codex.adapter)
+            : Effect.fail(new ProviderUnsupportedError({ provider })),
+        listProviders: () => Effect.succeed(["codex"]),
+      };
+      const runtimeRepositoryLayer = ProviderSessionRuntimeRepositoryLive.pipe(
+        Layer.provide(SqlitePersistenceMemory),
+      );
+      const directoryLayer = ProviderSessionDirectoryLive.pipe(
+        Layer.provide(runtimeRepositoryLayer),
+      );
+      const providerLayer = makeProviderServiceLive().pipe(
+        Layer.provide(Layer.succeed(ProviderAdapterRegistry, registry)),
+        Layer.provide(directoryLayer),
+        Layer.provide(defaultServerSettingsLayer),
+        Layer.provide(analyticsSpy.layer),
+        Layer.provide(emptyMcpConfigLayer),
+      );
+
+      yield* Effect.gen(function* () {
+        const provider = yield* ProviderService;
+        const threadId = asThreadId("thread-telemetry");
+        yield* provider.startSession(threadId, {
+          provider: "codex",
+          threadId,
+          runtimeMode: "full-access",
+        });
+        yield* sleep(50);
+        yield* provider.sendTurn({
+          threadId,
+          input: "hello",
+          attachments: [],
+        });
+        codex.emit({
+          type: "turn.completed",
+          eventId: asEventId("event-turn-completed"),
+          provider: "codex",
+          createdAt: new Date().toISOString(),
+          threadId,
+          turnId: "turn-thread-telemetry",
+          payload: { state: "completed" },
+        });
+        yield* waitForRecordedEvent(analyticsSpy, "provider.turn.duration");
+        yield* provider.stopSession({ threadId });
+      }).pipe(Effect.provide(providerLayer));
+
+      const sessionStart = analyticsSpy.recorded.find(
+        (entry) => entry.event === "provider.session.start",
+      );
+      assert.equal(sessionStart?.properties?.adapterPath, "direct");
+
+      const turnDuration = analyticsSpy.recorded.find(
+        (entry) => entry.event === "provider.turn.duration",
+      );
+      assert.equal(typeof turnDuration?.properties?.durationMs, "number");
+      assert.equal(turnDuration?.properties?.adapterPath, "direct");
+
+      const sessionEnd = analyticsSpy.recorded.find(
+        (entry) => entry.event === "provider.session.end",
+      );
+      assert.equal(sessionEnd?.properties?.endReason, "explicit");
+      assert.equal(sessionEnd?.properties?.adapterPath, "direct");
+    }).pipe(Effect.provide(NodeServices.layer)),
+);
+
 it.effect("ProviderServiceLive keeps persisted resumable sessions on startup", () =>
   Effect.gen(function* () {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "t3-provider-service-"));
@@ -365,8 +472,8 @@ it.effect("ProviderServiceLive keeps persisted resumable sessions on startup", (
       Layer.provide(Layer.succeed(ProviderAdapterRegistry, registry)),
       Layer.provide(directoryLayer),
       Layer.provide(defaultServerSettingsLayer),
-      Layer.provide(McpConfigServiceLive),
       Layer.provide(AnalyticsService.layerTest),
+      Layer.provide(emptyMcpConfigLayer),
     );
 
     yield* Effect.gen(function* () {
@@ -426,8 +533,8 @@ it.effect(
         Layer.provide(Layer.succeed(ProviderAdapterRegistry, firstRegistry)),
         Layer.provide(firstDirectoryLayer),
         Layer.provide(defaultServerSettingsLayer),
-        Layer.provide(McpConfigServiceLive),
         Layer.provide(AnalyticsService.layerTest),
+        Layer.provide(emptyMcpConfigLayer),
       );
       const updatedResumeCursor = {
         threadId: asThreadId("thread-1"),
@@ -479,8 +586,8 @@ it.effect(
         Layer.provide(Layer.succeed(ProviderAdapterRegistry, secondRegistry)),
         Layer.provide(secondDirectoryLayer),
         Layer.provide(defaultServerSettingsLayer),
-        Layer.provide(McpConfigServiceLive),
         Layer.provide(AnalyticsService.layerTest),
+        Layer.provide(emptyMcpConfigLayer),
       );
 
       secondCodex.startSession.mockClear();
@@ -817,6 +924,90 @@ routing.layer("ProviderServiceLive routing", (it) => {
     }),
   );
 
+  it.effect("persists MCP refs and clears MCP snapshots when a session stops", () =>
+    Effect.gen(function* () {
+      const recordedClearCalls: Array<ThreadId> = [];
+      const runtimeRepositoryLayer = ProviderSessionRuntimeRepositoryLive.pipe(
+        Layer.provide(SqlitePersistenceMemory),
+      );
+      const directoryLayer = ProviderSessionDirectoryLive.pipe(
+        Layer.provide(runtimeRepositoryLayer),
+      );
+      const codex = makeFakeCodexAdapter();
+      const registry: typeof ProviderAdapterRegistry.Service = {
+        getByProvider: (provider) =>
+          provider === "codex"
+            ? Effect.succeed(codex.adapter)
+            : Effect.fail(new ProviderUnsupportedError({ provider })),
+        listProviders: () => Effect.succeed(["codex"]),
+      };
+      const providerLayer = makeProviderServiceLive().pipe(
+        Layer.provide(Layer.succeed(ProviderAdapterRegistry, registry)),
+        Layer.provide(directoryLayer),
+        Layer.provide(defaultServerSettingsLayer),
+        Layer.provide(AnalyticsService.layerTest),
+        Layer.provide(
+          McpConfigService.layerTest({
+            resolveConfig: () =>
+              Effect.succeed({
+                version: "mcp-ref-test",
+                resolvedAt: "2026-01-01T00:00:00.000Z",
+                sourcePaths: ["/tmp/.t3/mcp.json"],
+                servers: [
+                  {
+                    name: "playwright",
+                    transport: "stdio",
+                    command: "npx",
+                    args: ["@playwright/mcp@latest"],
+                    enabled: true,
+                  },
+                ],
+              }),
+            clearSnapshot: (threadId) =>
+              Effect.sync(() => {
+                recordedClearCalls.push(threadId);
+              }),
+          }),
+        ),
+      );
+
+      yield* Effect.gen(function* () {
+        const provider = yield* ProviderService;
+        const runtimeRepository = yield* ProviderSessionRuntimeRepository;
+        const threadId = asThreadId("thread-mcp-runtime");
+
+        yield* provider.startSession(threadId, {
+          provider: "codex",
+          threadId,
+          runtimeMode: "full-access",
+        });
+
+        const runtime = yield* runtimeRepository.getByThreadId({ threadId });
+        assert.equal(Option.isSome(runtime), true);
+        if (Option.isSome(runtime)) {
+          const payload = runtime.value.runtimePayload;
+          assert.equal(
+            payload !== null && typeof payload === "object" && !Array.isArray(payload),
+            true,
+          );
+          if (payload !== null && typeof payload === "object" && !Array.isArray(payload)) {
+            const payloadRecord = payload as Record<string, unknown>;
+            assert.deepEqual(payloadRecord.mcpConfigRef, {
+              version: "mcp-ref-test",
+              resolvedAt: "2026-01-01T00:00:00.000Z",
+              sourcePaths: ["/tmp/.t3/mcp.json"],
+              serverCount: 1,
+            });
+          }
+        }
+
+        yield* provider.stopSession({ threadId });
+      }).pipe(Effect.provide(providerLayer));
+
+      assert.equal(recordedClearCalls.includes(asThreadId("thread-mcp-runtime")), true);
+    }).pipe(Effect.provide(NodeServices.layer)),
+  );
+
   it.effect("reuses persisted resume cursor when startSession is called after a restart", () =>
     Effect.gen(function* () {
       const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "t3-provider-service-start-"));
@@ -841,8 +1032,8 @@ routing.layer("ProviderServiceLive routing", (it) => {
         Layer.provide(Layer.succeed(ProviderAdapterRegistry, firstRegistry)),
         Layer.provide(firstDirectoryLayer),
         Layer.provide(defaultServerSettingsLayer),
-        Layer.provide(McpConfigServiceLive),
         Layer.provide(AnalyticsService.layerTest),
+        Layer.provide(emptyMcpConfigLayer),
       );
 
       const initial = yield* Effect.gen(function* () {
@@ -875,8 +1066,8 @@ routing.layer("ProviderServiceLive routing", (it) => {
         Layer.provide(Layer.succeed(ProviderAdapterRegistry, secondRegistry)),
         Layer.provide(secondDirectoryLayer),
         Layer.provide(defaultServerSettingsLayer),
-        Layer.provide(McpConfigServiceLive),
         Layer.provide(AnalyticsService.layerTest),
+        Layer.provide(emptyMcpConfigLayer),
       );
 
       secondClaude.startSession.mockClear();
@@ -1142,96 +1333,6 @@ validation.layer("ProviderServiceLive validation", (it) => {
       if (Option.isSome(runtime)) {
         assert.equal(runtime.value.threadId, session.threadId);
       }
-    }),
-  );
-});
-
-// ---------------------------------------------------------------------------
-// Capability model tests
-// ---------------------------------------------------------------------------
-
-function makeFakeAdapterWithCapabilities(
-  provider: ProviderKind,
-  overrides: Partial<ProviderAdapterCapabilities>,
-) {
-  const base = makeFakeCodexAdapter(provider);
-  const capabilities: ProviderAdapterCapabilities = {
-    ...base.adapter.capabilities,
-    ...overrides,
-  };
-  const adapter: ProviderAdapterShape<ProviderAdapterError> = {
-    ...base.adapter,
-    capabilities,
-  };
-  return { ...base, adapter };
-}
-
-const capabilitySuite = (() => {
-  const noRollback = makeFakeAdapterWithCapabilities("codex", {
-    supportsRollback: false,
-    resume: "none",
-    subagents: "none",
-    attachments: "none",
-    replay: "none",
-    mcpConfig: "none",
-  });
-  const registry: typeof ProviderAdapterRegistry.Service = {
-    getByProvider: (provider) =>
-      provider === "codex"
-        ? Effect.succeed(noRollback.adapter)
-        : Effect.fail(new ProviderUnsupportedError({ provider })),
-    listProviders: () => Effect.succeed(["codex"]),
-  };
-  const providerAdapterLayer = Layer.succeed(ProviderAdapterRegistry, registry);
-  const runtimeRepositoryLayer = ProviderSessionRuntimeRepositoryLive.pipe(
-    Layer.provide(SqlitePersistenceMemory),
-  );
-  const directoryLayer = ProviderSessionDirectoryLive.pipe(Layer.provide(runtimeRepositoryLayer));
-  const layer = it.layer(
-    Layer.mergeAll(
-      makeProviderServiceLive().pipe(
-        Layer.provide(providerAdapterLayer),
-        Layer.provide(directoryLayer),
-        Layer.provide(defaultServerSettingsLayer),
-        Layer.provide(McpConfigServiceLive),
-        Layer.provideMerge(AnalyticsService.layerTest),
-      ),
-      directoryLayer,
-      runtimeRepositoryLayer,
-      NodeServices.layer,
-    ),
-  );
-  return { noRollback, layer };
-})();
-
-capabilitySuite.layer("Capability model constraints", (it) => {
-  it.effect("getCapabilities returns graduated fields including none values", () =>
-    Effect.gen(function* () {
-      const provider = yield* ProviderService;
-      const caps = yield* provider.getCapabilities("codex");
-
-      // Verify the adapter's "none" graduated capabilities are faithfully returned.
-      assert.equal(caps.resume, "none");
-      assert.equal(caps.subagents, "none");
-      assert.equal(caps.attachments, "none");
-      assert.equal(caps.replay, "none");
-      assert.equal(caps.mcpConfig, "none");
-
-      // Verify the boolean flags that were explicitly set.
-      assert.equal(caps.supportsRollback, false);
-    }),
-  );
-
-  it.effect("adapter with supportsRollback=false still declares none for resume", () =>
-    Effect.gen(function* () {
-      const provider = yield* ProviderService;
-      const caps = yield* provider.getCapabilities("codex");
-
-      // When supportsRollback is false AND resume is "none", both should be
-      // consistently reflected — a provider that cannot resume also cannot
-      // meaningfully rollback.
-      assert.equal(caps.supportsRollback, false);
-      assert.equal(caps.resume, "none");
     }),
   );
 });
