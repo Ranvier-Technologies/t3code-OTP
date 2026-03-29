@@ -509,6 +509,7 @@ const QUIET_UNMAPPED_EVENTS = new Set([
   "session.created",
   "rate_limit_event",
   "stream_event",
+  "codex/event/mcp_startup_complete",
   "hook_started",
   "hook_response",
   "user",
@@ -1141,9 +1142,16 @@ export function mapToRuntimeEvents(
     ];
   }
 
-  if (event.method === "mcpServer/startupStatus/updated") {
-    const server = asString(payload?.name);
-    const state = asString(payload?.status);
+  if (
+    event.method === "codex/event/mcp_startup_update" ||
+    event.method === "mcpServer/startupStatus/updated"
+  ) {
+    const server = asString(payload?.server) ?? asString(payload?.name);
+    const statusObj =
+      payload?.status && typeof payload.status === "object"
+        ? (payload.status as Record<string, unknown>)
+        : null;
+    const state = asString(statusObj?.state) ?? asString(payload?.status);
     if (server && state) {
       return [
         {
@@ -1153,7 +1161,9 @@ export function mapToRuntimeEvents(
             server,
             status: {
               state,
-              ...(asString(payload?.error) ? { error: asString(payload?.error) } : {}),
+              ...(asString(statusObj?.error ?? payload?.error)
+                ? { error: asString(statusObj?.error ?? payload?.error) }
+                : {}),
             },
           },
         },
