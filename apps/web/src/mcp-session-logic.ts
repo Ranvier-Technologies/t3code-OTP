@@ -39,7 +39,7 @@ interface MutableServerState {
 }
 
 interface ParsedMcpStatus {
-  state: "starting" | "ready" | "failed" | "cancelled";
+  state: "starting" | "ready" | "failed" | "cancelled" | "unknown";
   error?: string;
 }
 
@@ -75,7 +75,7 @@ function parseMcpStatus(value: unknown): ParsedMcpStatus | null {
     record.state !== "failed" &&
     record.state !== "cancelled"
   ) {
-    return null;
+    return { state: "unknown" };
   }
   if (record.state === "failed") {
     return {

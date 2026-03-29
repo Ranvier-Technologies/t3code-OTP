@@ -1146,6 +1146,22 @@ export function mapToRuntimeEvents(
     event.method === "codex/event/mcp_startup_update" ||
     event.method === "mcpServer/startupStatus/updated"
   ) {
+    // Normalize provider-specific MCP state strings to the canonical enum.
+    // Codex sends "starting"/"ready"/"failed"/"cancelled" (pass through).
+    // Claude/OpenCode may send "connected"/"disabled"/"needs_auth"/etc.
+    const normalizeMcpState = (raw: string): string => {
+      switch (raw) {
+        case "connected":
+          return "ready";
+        case "disabled":
+          return "cancelled";
+        case "needs_auth":
+        case "needs_client_registration":
+          return "failed";
+        default:
+          return raw;
+      }
+    };
     // Codex wraps the MCP data in a `msg` envelope; unwrap if present.
     const mcpPayload = asObject(payload?.msg) ?? payload;
     const server = asString(mcpPayload?.server) ?? asString(mcpPayload?.name);
@@ -1162,7 +1178,7 @@ export function mapToRuntimeEvents(
           payload: {
             server,
             status: {
-              state,
+              state: normalizeMcpState(state),
               ...(asString(statusObj?.error ?? mcpPayload?.error)
                 ? { error: asString(statusObj?.error ?? mcpPayload?.error) }
                 : {}),

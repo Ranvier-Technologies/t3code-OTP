@@ -94,9 +94,11 @@ export default function ThreadMcpStatusPanel({
   className?: string;
 }) {
   const [fetchedServers, setFetchedServers] = useState<McpSessionServerViewModel[]>([]);
+  const [isFetching, setIsFetching] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
+    setIsFetching(true);
     ensureNativeApi()
       .mcp.status(threadId)
       .then((data) => {
@@ -104,6 +106,9 @@ export default function ThreadMcpStatusPanel({
       })
       .catch(() => {
         // Provider doesn't support MCP status — ignore
+      })
+      .finally(() => {
+        if (!cancelled) setIsFetching(false);
       });
     return () => {
       cancelled = true;
@@ -114,11 +119,6 @@ export default function ThreadMcpStatusPanel({
     () => mergeServers(mcp.servers, fetchedServers),
     [mcp.servers, fetchedServers],
   );
-  const hasContent = servers.length > 0;
-
-  if (!hasContent && !mcp.hasAnyMcpActivity) {
-    return null;
-  }
 
   return (
     <Card className={cn("w-full", className)}>
@@ -140,7 +140,13 @@ export default function ThreadMcpStatusPanel({
         ) : null}
       </CardHeader>
       <CardContent className="min-h-0 space-y-3 overflow-y-auto p-4 pt-0">
-        {servers.length > 0 ? (
+        {isFetching && servers.length === 0 ? (
+          <p className="py-4 text-center text-sm text-muted-foreground">Loading MCP status...</p>
+        ) : servers.length === 0 ? (
+          <p className="py-4 text-center text-sm text-muted-foreground">
+            No MCP servers detected for this session.
+          </p>
+        ) : (
           <div className="space-y-2">
             {servers.map((server) => (
               <div
@@ -175,8 +181,6 @@ export default function ThreadMcpStatusPanel({
               </div>
             ))}
           </div>
-        ) : (
-          <p className="text-sm text-muted-foreground">No MCP servers detected.</p>
         )}
       </CardContent>
     </Card>
