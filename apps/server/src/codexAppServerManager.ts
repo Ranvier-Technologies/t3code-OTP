@@ -391,13 +391,9 @@ function assertSafeBinaryPath(binaryPath: string): void {
   // Reject shell metacharacters that could enable command injection.
   // On Windows, allow backslashes since they are the standard path separator.
   const shellMetaChars =
-    process.platform === "win32"
-      ? /[;|&$`(){}[\]!#~<>"'\n\r]/
-      : /[;|&$`(){}[\]!#~<>"'\\\n\r]/;
+    process.platform === "win32" ? /[;|&$`(){}[\]!#~<>"'\n\r]/ : /[;|&$`(){}[\]!#~<>"'\\\n\r]/;
   if (shellMetaChars.test(trimmed)) {
-    throw new Error(
-      `Binary path contains disallowed characters: ${binaryPath}`,
-    );
+    throw new Error(`Binary path contains disallowed characters: ${binaryPath}`);
   }
   // Reject directory traversal
   const normalized = path.normalize(trimmed);
