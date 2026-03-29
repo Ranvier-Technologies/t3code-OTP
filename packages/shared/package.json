@@ -35,6 +35,10 @@
     "./Struct": {
       "types": "./src/Struct.ts",
       "import": "./src/Struct.ts"
+    },
+    "./mcp": {
+      "types": "./src/mcp.ts",
+      "import": "./src/mcp.ts"
     }
   },
   "scripts": {

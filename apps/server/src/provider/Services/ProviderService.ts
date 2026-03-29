@@ -99,6 +99,32 @@ export interface ProviderServiceShape {
     readonly numTurns: number;
   }) => Effect.Effect<void, ProviderServiceError>;
 
+  // ── MCP Management (harness-only, capability-gated) ───────────────
+
+  /** Get MCP server status for an active provider session. */
+  readonly mcpStatus: (
+    threadId: ThreadId,
+  ) => Effect.Effect<Record<string, unknown>, ProviderServiceError>;
+
+  /** Add an MCP server to an active provider session. */
+  readonly mcpAdd: (
+    threadId: ThreadId,
+    name: string,
+    config: Record<string, unknown>,
+  ) => Effect.Effect<Record<string, unknown>, ProviderServiceError>;
+
+  /** Connect an MCP server in an active provider session. */
+  readonly mcpConnect: (
+    threadId: ThreadId,
+    name: string,
+  ) => Effect.Effect<void, ProviderServiceError>;
+
+  /** Disconnect an MCP server in an active provider session. */
+  readonly mcpDisconnect: (
+    threadId: ThreadId,
+    name: string,
+  ) => Effect.Effect<void, ProviderServiceError>;
+
   /**
    * Canonical provider runtime event stream.
    *

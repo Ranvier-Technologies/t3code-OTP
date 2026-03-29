@@ -255,19 +255,15 @@ defmodule Harness.SessionManager do
   Falls back to {:error, reason} if no session is running or the call fails.
   """
   def list_models_from_session(thread_id) do
-    case Registry.lookup(Harness.SessionRegistry, thread_id) do
-      [{pid, "opencode"}] ->
-        try do
-          GenServer.call(pid, :list_models, 15_000)
-        catch
-          :exit, reason -> {:error, "GenServer call failed: #{inspect(reason)}"}
-        end
-
-      [{_pid, other}] ->
+    with_opencode_session(thread_id, fn pid ->
+      GenServer.call(pid, :list_models, 15_000)
+    end)
+    |> case do
+      {:error, {:provider_mismatch, other}} ->
         {:error, "list_models_from_session only supports opencode, got: #{other}"}
 
-      [] ->
-        {:error, "Session not found: #{thread_id}"}
+      other ->
+        other
     end
   end
 
@@ -324,7 +320,7 @@ defmodule Harness.SessionManager do
         end
 
       [{_pid, other}] ->
-        {:error, "MCP management only supports opencode, got: #{other}"}
+        {:error, {:provider_mismatch, other}}
 
       [] ->
         {:error, "Session not found: #{thread_id}"}

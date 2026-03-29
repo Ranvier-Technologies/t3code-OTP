@@ -180,4 +180,14 @@ export interface NativeApi {
     replayEvents: (fromSequenceExclusive: number) => Promise<OrchestrationEvent[]>;
     onDomainEvent: (callback: (event: OrchestrationEvent) => void) => () => void;
   };
+  mcp: {
+    status: (threadId: string) => Promise<Record<string, unknown>>;
+    add: (
+      threadId: string,
+      name: string,
+      config: Record<string, unknown>,
+    ) => Promise<Record<string, unknown>>;
+    connect: (threadId: string, name: string) => Promise<void>;
+    disconnect: (threadId: string, name: string) => Promise<void>;
+  };
 }

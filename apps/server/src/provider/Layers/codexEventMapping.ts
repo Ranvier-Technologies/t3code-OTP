@@ -507,10 +507,9 @@ const QUIET_UNMAPPED_EVENTS = new Set([
   "file.watcher.updated",
   "session.diff",
   "session.created",
-  "mcp_startup_update",
-  "mcp_startup_complete",
   "rate_limit_event",
   "stream_event",
+  "codex/event/mcp_startup_complete",
   "hook_started",
   "hook_response",
   "user",
@@ -1141,6 +1140,53 @@ export function mapToRuntimeEvents(
         },
       },
     ];
+  }
+
+  if (
+    event.method === "codex/event/mcp_startup_update" ||
+    event.method === "mcpServer/startupStatus/updated"
+  ) {
+    // Normalize provider-specific MCP state strings to the canonical enum.
+    // Codex sends "starting"/"ready"/"failed"/"cancelled" (pass through).
+    // Claude/OpenCode may send "connected"/"disabled"/"needs_auth"/etc.
+    const normalizeMcpState = (raw: string): string => {
+      switch (raw) {
+        case "connected":
+          return "ready";
+        case "disabled":
+          return "cancelled";
+        case "needs_auth":
+        case "needs_client_registration":
+          return "failed";
+        default:
+          return raw;
+      }
+    };
+    // Codex wraps the MCP data in a `msg` envelope; unwrap if present.
+    const mcpPayload = asObject(payload?.msg) ?? payload;
+    const server = asString(mcpPayload?.server) ?? asString(mcpPayload?.name);
+    const statusObj =
+      mcpPayload?.status && typeof mcpPayload.status === "object"
+        ? (mcpPayload.status as Record<string, unknown>)
+        : null;
+    const state = asString(statusObj?.state) ?? asString(mcpPayload?.status);
+    if (server && state) {
+      return [
+        {
+          type: "mcp.status.updated",
+          ...runtimeEventBase(event, canonicalThreadId),
+          payload: {
+            server,
+            status: {
+              state: normalizeMcpState(state),
+              ...(asString(statusObj?.error ?? mcpPayload?.error)
+                ? { error: asString(statusObj?.error ?? mcpPayload?.error) }
+                : {}),
+            },
+          },
+        },
+      ];
+    }
   }
 
   if (event.method === "thread/realtime/started") {

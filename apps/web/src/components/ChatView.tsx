@@ -85,7 +85,9 @@ import { useTurnDiffSummaries } from "../hooks/useTurnDiffSummaries";
 import BranchToolbar from "./BranchToolbar";
 import { resolveShortcutCommand, shortcutLabelForCommand } from "../keybindings";
 import PlanSidebar from "./PlanSidebar";
+import ThreadMcpStatusPanel from "./ThreadMcpStatusPanel";
 import ThreadTerminalDrawer from "./ThreadTerminalDrawer";
+import { deriveMcpSessionViewModel } from "../mcp-session-logic";
 import {
   BotIcon,
   ChevronDownIcon,
@@ -93,6 +95,7 @@ import {
   ChevronRightIcon,
   CircleAlertIcon,
   ListTodoIcon,
+  PlugIcon,
   LockIcon,
   LockOpenIcon,
   XIcon,
@@ -117,6 +120,7 @@ import { SidebarTrigger } from "./ui/sidebar";
 import { newCommandId, newMessageId, newThreadId } from "~/lib/utils";
 import { readNativeApi } from "~/nativeApi";
 import {
+  getProviderCapabilities,
   getProviderModelCapabilities,
   getProviderModels,
   resolveSelectableProvider,
@@ -340,6 +344,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
     useState<Record<string, number>>({});
   const [expandedWorkGroups, setExpandedWorkGroups] = useState<Record<string, boolean>>({});
   const [planSidebarOpen, setPlanSidebarOpen] = useState(false);
+  const [mcpPanelOpen, setMcpPanelOpen] = useState(false);
   const [isComposerFooterCompact, setIsComposerFooterCompact] = useState(false);
   // Tracks whether the user explicitly dismissed the sidebar for the active turn.
   const planSidebarDismissedForTurnRef = useRef<string | null>(null);
@@ -663,6 +668,15 @@ export default function ChatView({ threadId }: ChatViewProps) {
     () => hasToolActivityForTurn(threadActivities, activeLatestTurn?.turnId),
     [activeLatestTurn?.turnId, threadActivities],
   );
+  const mcpViewModel = useMemo(
+    () => deriveMcpSessionViewModel(threadActivities),
+    [threadActivities],
+  );
+  const mcpCapable = useMemo(
+    () => getProviderCapabilities(providerStatuses, selectedProvider).mcpConfig !== "none",
+    [providerStatuses, selectedProvider],
+  );
+  const showMcpToggle = mcpCapable;
   const pendingApprovals = useMemo(
     () => derivePendingApprovals(threadActivities),
     [threadActivities],
@@ -1612,10 +1626,21 @@ export default function ChatView({ threadId }: ChatViewProps) {
         }
       } else {
         planSidebarDismissedForTurnRef.current = null;
+        // Mutual exclusion: close MCP panel when opening plan sidebar
+        setMcpPanelOpen(false);
       }
       return !open;
     });
   }, [activePlan?.turnId, sidebarProposedPlan?.turnId]);
+  const toggleMcpPanel = useCallback(() => {
+    setMcpPanelOpen((open) => {
+      if (!open) {
+        // Mutual exclusion: close plan sidebar when opening MCP panel
+        setPlanSidebarOpen(false);
+      }
+      return !open;
+    });
+  }, []);
 
   const persistThreadSettingsForNextTurn = useCallback(
     async (input: {
@@ -3843,9 +3868,12 @@ export default function ChatView({ threadId }: ChatViewProps) {
                             planSidebarOpen={planSidebarOpen}
                             runtimeMode={runtimeMode}
                             traitsMenuContent={providerTraitsMenuContent}
+                            hasMcpActivity={showMcpToggle}
+                            mcpPanelOpen={mcpPanelOpen}
                             onToggleInteractionMode={toggleInteractionMode}
                             onTogglePlanSidebar={togglePlanSidebar}
                             onToggleRuntimeMode={toggleRuntimeMode}
+                            onToggleMcpPanel={toggleMcpPanel}
                           />
                         ) : (
                           <>
@@ -3934,6 +3962,30 @@ export default function ChatView({ threadId }: ChatViewProps) {
                                 >
                                   <ListTodoIcon />
                                   <span className="sr-only sm:not-sr-only">Plan</span>
+                                </Button>
+                              </>
+                            ) : null}
+                            {showMcpToggle ? (
+                              <>
+                                <Separator
+                                  orientation="vertical"
+                                  className="mx-0.5 hidden h-4 sm:block"
+                                />
+                                <Button
+                                  variant="ghost"
+                                  className={cn(
+                                    "shrink-0 whitespace-nowrap px-2 sm:px-3",
+                                    mcpPanelOpen
+                                      ? "text-blue-400 hover:text-blue-300"
+                                      : "text-muted-foreground/70 hover:text-foreground/80",
+                                  )}
+                                  size="sm"
+                                  type="button"
+                                  onClick={toggleMcpPanel}
+                                  title={mcpPanelOpen ? "Hide MCP status" : "Show MCP status"}
+                                >
+                                  <PlugIcon />
+                                  <span className="sr-only sm:not-sr-only">MCP</span>
                                 </Button>
                               </>
                             ) : null}
@@ -4157,6 +4209,19 @@ export default function ChatView({ threadId }: ChatViewProps) {
               }
             }}
           />
+        ) : null}
+
+        {/* MCP status panel */}
+        {mcpPanelOpen && activeThreadId ? (
+          <div className="flex h-full w-[340px] shrink-0 flex-col border-l border-border/70">
+            <ThreadMcpStatusPanel
+              key={`mcp:${activeThreadId}`}
+              threadId={activeThreadId}
+              mcp={mcpViewModel}
+              onClose={() => setMcpPanelOpen(false)}
+              className="max-h-[min(70vh,36rem)]"
+            />
+          </div>
         ) : null}
       </div>
       {/* end horizontal flex container */}

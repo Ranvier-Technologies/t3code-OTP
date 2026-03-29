@@ -80,6 +80,12 @@ export const WS_METHODS = {
   serverUpsertKeybinding: "server.upsertKeybinding",
   serverGetSettings: "server.getSettings",
   serverUpdateSettings: "server.updateSettings",
+
+  // MCP management
+  mcpStatus: "mcp.status",
+  mcpAdd: "mcp.add",
+  mcpConnect: "mcp.connect",
+  mcpDisconnect: "mcp.disconnect",
 } as const;
 
 // ── Push Event Channels ──────────────────────────────────────────────
@@ -91,6 +97,16 @@ export const WS_CHANNELS = {
   serverConfigUpdated: "server.configUpdated",
   serverProvidersUpdated: "server.providersUpdated",
 } as const;
+
+// ── MCP Input Schemas ───────────────────────────────────────────────
+
+export const McpStatusInput = Schema.Struct({ threadId: ThreadId });
+export const McpNamedInput = Schema.Struct({ threadId: ThreadId, name: TrimmedNonEmptyString });
+export const McpAddInput = Schema.Struct({
+  threadId: ThreadId,
+  name: TrimmedNonEmptyString,
+  config: Schema.Record(Schema.String, Schema.Unknown),
+});
 
 // -- Tagged Union of all request body schemas ─────────────────────────
 
@@ -149,6 +165,12 @@ const WebSocketRequestBody = Schema.Union([
   tagRequestBody(WS_METHODS.serverUpsertKeybinding, KeybindingRule),
   tagRequestBody(WS_METHODS.serverGetSettings, Schema.Struct({})),
   tagRequestBody(WS_METHODS.serverUpdateSettings, Schema.Struct({ patch: ServerSettingsPatch })),
+
+  // MCP management
+  tagRequestBody(WS_METHODS.mcpStatus, McpStatusInput),
+  tagRequestBody(WS_METHODS.mcpAdd, McpAddInput),
+  tagRequestBody(WS_METHODS.mcpConnect, McpNamedInput),
+  tagRequestBody(WS_METHODS.mcpDisconnect, McpNamedInput),
 ]);
 
 export const WebSocketRequest = Schema.Struct({

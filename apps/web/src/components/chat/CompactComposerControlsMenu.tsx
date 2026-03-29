@@ -1,6 +1,6 @@
 import { ProviderInteractionMode, RuntimeMode } from "@t3tools/contracts";
 import { memo, type ReactNode } from "react";
-import { EllipsisIcon, ListTodoIcon } from "lucide-react";
+import { EllipsisIcon, ListTodoIcon, PlugIcon } from "lucide-react";
 import { Button } from "../ui/button";
 import {
   Menu,
@@ -18,9 +18,12 @@ export const CompactComposerControlsMenu = memo(function CompactComposerControls
   planSidebarOpen: boolean;
   runtimeMode: RuntimeMode;
   traitsMenuContent?: ReactNode;
+  hasMcpActivity?: boolean;
+  mcpPanelOpen?: boolean;
   onToggleInteractionMode: () => void;
   onTogglePlanSidebar: () => void;
   onToggleRuntimeMode: () => void;
+  onToggleMcpPanel?: () => void;
 }) {
   return (
     <Menu>
@@ -72,6 +75,15 @@ export const CompactComposerControlsMenu = memo(function CompactComposerControls
             <MenuItem onClick={props.onTogglePlanSidebar}>
               <ListTodoIcon className="size-4 shrink-0" />
               {props.planSidebarOpen ? "Hide plan sidebar" : "Show plan sidebar"}
+            </MenuItem>
+          </>
+        ) : null}
+        {props.hasMcpActivity && props.onToggleMcpPanel ? (
+          <>
+            <MenuDivider />
+            <MenuItem onClick={props.onToggleMcpPanel}>
+              <PlugIcon className="size-4 shrink-0" />
+              {props.mcpPanelOpen ? "Hide MCP status" : "Show MCP status"}
             </MenuItem>
           </>
         ) : null}

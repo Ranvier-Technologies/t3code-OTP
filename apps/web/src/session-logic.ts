@@ -776,7 +776,7 @@ function extractChangedFiles(payload: Record<string, unknown> | null): string[] 
   return changedFiles;
 }
 
-function compareActivitiesByOrder(
+export function compareActivitiesByOrder(
   left: OrchestrationThreadActivity,
   right: OrchestrationThreadActivity,
 ): number {
@@ -815,6 +815,61 @@ function compareActivityLifecycleRank(kind: string): number {
     return 2;
   }
   return 1;
+}
+
+export interface McpStartupWarningDetail {
+  category: "mcp.startup";
+  server: string;
+  status: {
+    state: "starting" | "ready" | "failed" | "cancelled";
+    error?: string;
+  };
+  rawError?: string;
+  remediationCommand?: string;
+}
+
+export function parseMcpStartupWarningDetail(value: unknown): McpStartupWarningDetail | null {
+  const record = asRecord(value);
+  if (
+    record?.category !== "mcp.startup" ||
+    typeof record.server !== "string" ||
+    !record.status ||
+    typeof record.status !== "object"
+  ) {
+    return null;
+  }
+  const status = record.status as Record<string, unknown>;
+  if (
+    status.state !== "starting" &&
+    status.state !== "ready" &&
+    status.state !== "failed" &&
+    status.state !== "cancelled"
+  ) {
+    return null;
+  }
+  if (status.state === "failed" && typeof status.error !== "string") {
+    return null;
+  }
+  if (status.state === "failed") {
+    return {
+      category: "mcp.startup",
+      server: record.server,
+      status: { state: "failed", error: status.error as string },
+      ...(typeof record.rawError === "string" ? { rawError: record.rawError } : {}),
+      ...(typeof record.remediationCommand === "string"
+        ? { remediationCommand: record.remediationCommand }
+        : {}),
+    };
+  }
+  return {
+    category: "mcp.startup",
+    server: record.server,
+    status: { state: status.state },
+    ...(typeof record.rawError === "string" ? { rawError: record.rawError } : {}),
+    ...(typeof record.remediationCommand === "string"
+      ? { remediationCommand: record.remediationCommand }
+      : {}),
+  };
 }
 
 export function hasToolActivityForTurn(

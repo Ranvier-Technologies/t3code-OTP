@@ -151,6 +151,9 @@ export function createDevRunnerEnv({
 
     const output: NodeJS.ProcessEnv = {
       ...baseEnv,
+      // Disable bun's runtime transpiler cache so server-side TS changes
+      // are always picked up on restart without manual cache busting.
+      BUN_RUNTIME_TRANSPILER_CACHE: "0",
       PORT: String(webPort),
       ELECTRON_RENDERER_PORT: String(webPort),
       VITE_DEV_SERVER_URL: devUrl?.toString() ?? `http://localhost:${webPort}`,
