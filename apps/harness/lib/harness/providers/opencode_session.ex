@@ -171,7 +171,7 @@ defmodule Harness.Providers.OpenCodeSession do
 
         # Reuse a persisted session when available; otherwise create a new one.
         # This preserves conversation history across session restarts/resumes.
-        {session_result, reused} =
+        {session_result, _reused} =
           if state.opencode_session_id do
             # Verify the persisted session still exists on the server
             case verify_opencode_session(state) do
@@ -190,7 +190,6 @@ defmodule Harness.Providers.OpenCodeSession do
         case session_result do
           {:ok, session_id} ->
             state = %{state | opencode_session_id: session_id, ready: true}
-            _ = reused
 
             emit_event(state, :session, "session/started", %{
               "sessionId" => session_id,
@@ -1272,8 +1271,8 @@ defmodule Harness.Providers.OpenCodeSession do
   # Verify that a persisted OpenCode session still exists on the server.
   defp verify_opencode_session(state) do
     case http_get("#{state.base_url}/session/#{state.opencode_session_id}") do
-      {:ok, %{"id" => _}} -> :ok
-      {:ok, _} -> :ok
+      {:ok, %{"id" => id}} when id == state.opencode_session_id -> :ok
+      {:ok, body} -> {:error, {:unexpected_session_payload, body}}
       {:error, reason} -> {:error, reason}
     end
   end

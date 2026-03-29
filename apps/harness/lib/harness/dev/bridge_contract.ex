@@ -32,7 +32,7 @@ defmodule Harness.Dev.BridgeContract do
       },
       %{
         event: "session.sendTurn",
-        params: ~w(threadId input model effort interactionMode modelOptions),
+        params: ~w(threadId input model effort interactionMode modelOptions attachments),
         required: ~w(threadId),
         description: "Send a turn to an active session."
       },

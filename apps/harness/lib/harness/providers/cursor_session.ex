@@ -571,7 +571,16 @@ defmodule Harness.Providers.CursorSession do
     # the second turn's --resume to reference a stale/invalid ID.
     state =
       if session_id && !state.has_real_chat_id do
-        %{state | resume_session_id: session_id, has_real_chat_id: true}
+        state = %{
+          state
+          | session_id: session_id,
+            resume_session_id: session_id,
+            has_real_chat_id: true
+        }
+
+        # Persist the binding so restarts see the durable resume ID.
+        persist_binding(state)
+        state
       else
         state
       end
