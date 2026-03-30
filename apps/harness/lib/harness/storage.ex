@@ -146,7 +146,11 @@ defmodule Harness.Storage do
     {:reply, result, state}
   end
 
-  def handle_call({:upsert_binding, thread_id, provider, resume_cursor_json}, _from, %{conn: conn} = state) do
+  def handle_call(
+        {:upsert_binding, thread_id, provider, resume_cursor_json},
+        _from,
+        %{conn: conn} = state
+      ) do
     result = do_upsert_binding(conn, thread_id, provider, resume_cursor_json)
     {:reply, result, state}
   end
@@ -472,11 +476,15 @@ defmodule Harness.Storage do
   end
 
   defp do_get_binding(conn, thread_id) do
-    sql = "SELECT thread_id, provider, resume_cursor_json FROM harness_bindings WHERE thread_id = ?1"
+    sql =
+      "SELECT thread_id, provider, resume_cursor_json FROM harness_bindings WHERE thread_id = ?1"
 
     case query_one(conn, sql, [thread_id]) do
-      [tid, provider, cursor_json] -> %{thread_id: tid, provider: provider, resume_cursor_json: cursor_json}
-      nil -> nil
+      [tid, provider, cursor_json] ->
+        %{thread_id: tid, provider: provider, resume_cursor_json: cursor_json}
+
+      nil ->
+        nil
     end
   end
 
@@ -625,7 +633,15 @@ defmodule Harness.Storage do
     }
   end
 
-  defp row_to_pending_request([request_id, thread_id, provider, request_type, method, payload_json, created_at]) do
+  defp row_to_pending_request([
+         request_id,
+         thread_id,
+         provider,
+         request_type,
+         method,
+         payload_json,
+         created_at
+       ]) do
     %{
       request_id: request_id,
       thread_id: thread_id,

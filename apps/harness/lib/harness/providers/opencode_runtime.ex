@@ -87,7 +87,11 @@ defmodule Harness.Providers.OpenCodeRuntime do
     case RuntimeRegistry.lookup(key) do
       {:ok, pid} ->
         try do
-          case GenServer.call(pid, {:lease_and_subscribe, key, thread_id, wrapper_pid}, @lease_call_timeout) do
+          case GenServer.call(
+                 pid,
+                 {:lease_and_subscribe, key, thread_id, wrapper_pid},
+                 @lease_call_timeout
+               ) do
             :ok ->
               {:ok, pid}
 
@@ -394,7 +398,10 @@ defmodule Harness.Providers.OpenCodeRuntime do
         {:noreply, %{state | health: :ready}}
 
       _ ->
-        Logger.warning("Runtime health check failed (key: #{RuntimeKey.to_string(state.runtime_key)})")
+        Logger.warning(
+          "Runtime health check failed (key: #{RuntimeKey.to_string(state.runtime_key)})"
+        )
+
         Process.send_after(self(), :health_check, @health_check_interval_ms)
         {:noreply, %{state | health: :degraded}}
     end

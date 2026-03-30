@@ -208,11 +208,12 @@ defmodule Harness.SnapshotServer do
         session ->
           merged_pending =
             Map.new(reqs, fn req ->
-              {req.request_id, %{
-                method: req.method,
-                payload: req.payload,
-                created_at: req.created_at
-              }}
+              {req.request_id,
+               %{
+                 method: req.method,
+                 payload: req.payload,
+                 created_at: req.created_at
+               }}
             end)
 
           Map.put(acc, thread_id, %{session | pending_requests: merged_pending})
@@ -268,13 +269,19 @@ defmodule Harness.SnapshotServer do
                      updated_at: now,
                      last_sequence: new_seq
                    }) do
-                :ok -> :ok
+                :ok ->
+                  :ok
+
                 {:error, reason} ->
-                  Logger.error("Reconciliation upsert failed for #{thread_id}: #{inspect(reason)}")
+                  Logger.error(
+                    "Reconciliation upsert failed for #{thread_id}: #{inspect(reason)}"
+                  )
               end
 
             {:error, reason} ->
-              Logger.error("Reconciliation event insert failed for #{thread_id}: #{inspect(reason)}")
+              Logger.error(
+                "Reconciliation event insert failed for #{thread_id}: #{inspect(reason)}"
+              )
           end
         catch
           :exit, reason ->
@@ -377,12 +384,18 @@ defmodule Harness.SnapshotServer do
           {:reply, {:ok, seq, events}, state}
 
         {:error, reason} ->
-          Logger.warning("SQL replay failed (after_seq=#{after_seq}, seq=#{seq}): #{inspect(reason)}")
+          Logger.warning(
+            "SQL replay failed (after_seq=#{after_seq}, seq=#{seq}): #{inspect(reason)}"
+          )
+
           {:reply, {:gap, seq, after_seq}, state}
       end
     catch
       :exit, reason ->
-        Logger.warning("SQL replay crashed (after_seq=#{after_seq}, seq=#{seq}): #{inspect(reason)}")
+        Logger.warning(
+          "SQL replay crashed (after_seq=#{after_seq}, seq=#{seq}): #{inspect(reason)}"
+        )
+
         {:reply, {:gap, seq, after_seq}, state}
     end
   end

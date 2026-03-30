@@ -4,6 +4,8 @@ defmodule Harness.Providers.CursorSessionTest do
   alias Harness.Providers.CursorSession
 
   test "exports the provider session callbacks used by SessionManager" do
+    Code.ensure_loaded!(CursorSession)
+
     assert function_exported?(CursorSession, :start_link, 1)
     assert function_exported?(CursorSession, :wait_for_ready, 1)
     assert function_exported?(CursorSession, :wait_for_ready, 2)
