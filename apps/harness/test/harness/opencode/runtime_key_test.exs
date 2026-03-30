@@ -60,6 +60,20 @@ defmodule Harness.OpenCode.RuntimeKeyTest do
       assert key1.mcp_config_hash != key2.mcp_config_hash
     end
 
+    test "mcp_config hash is stable regardless of map key insertion order" do
+      # Construct maps with identical content but potentially different internal order
+      config_a = Map.new([{"z_last", 1}, {"a_first", 2}, {"m_middle", %{"nested_b" => 10, "nested_a" => 20}}])
+      config_b = Map.new([{"a_first", 2}, {"m_middle", %{"nested_a" => 20, "nested_b" => 10}}, {"z_last", 1}])
+
+      params_a = %{"cwd" => "/tmp/project", "mcp_config" => config_a}
+      params_b = %{"cwd" => "/tmp/project", "mcp_config" => config_b}
+
+      key_a = RuntimeKey.from_params(params_a)
+      key_b = RuntimeKey.from_params(params_b)
+
+      assert key_a.mcp_config_hash == key_b.mcp_config_hash
+    end
+
     test "empty mcp_config produces nil hash" do
       params = %{"cwd" => "/tmp/project", "mcp_config" => %{}}
       key = RuntimeKey.from_params(params)

@@ -151,13 +151,19 @@ defmodule Harness.Providers.OpenCodeSession do
 
   @impl true
   def handle_info(:setup, state) do
-    # Lease (find or create) a shared runtime for our runtime key
-    case OpenCodeRuntime.lease(state.runtime_key, state.params) do
+    # Atomically lease (find or create) a shared runtime AND subscribe for events.
+    # This eliminates the gap where we hold a lease but aren't yet monitored.
+    case OpenCodeRuntime.lease_and_subscribe(
+           state.runtime_key,
+           state.params,
+           state.thread_id,
+           self()
+         ) do
       {:ok, runtime_pid} ->
         # Wait for the runtime to be ready (opencode serve up + SSE connected)
         case OpenCodeRuntime.wait_for_ready(runtime_pid) do
           :ok ->
-            setup_with_runtime(state, runtime_pid)
+            setup_after_subscribe(state, runtime_pid)
 
           {:error, reason} ->
             Logger.error("OpenCode runtime failed to become ready: #{inspect(reason)}")
@@ -558,15 +564,13 @@ defmodule Harness.Providers.OpenCodeSession do
   end
 
 
-  # --- Private: Setup with Runtime ---
+  # --- Private: Setup after Lease+Subscribe ---
 
-  defp setup_with_runtime(state, runtime_pid) do
+  defp setup_after_subscribe(state, runtime_pid) do
     # Monitor the runtime so we know if it dies
     runtime_ref = Process.monitor(runtime_pid)
 
-    # Subscribe to runtime SSE events
-    OpenCodeRuntime.subscribe(runtime_pid, state.thread_id, self())
-
+    # NOTE: subscribe already happened in lease_and_subscribe/4
     sse_connected_at = System.monotonic_time(:millisecond)
 
     state = %{
@@ -701,7 +705,7 @@ defmodule Harness.Providers.OpenCodeSession do
     is_nil(event_session) or event_session == session_id
   end
 
-  defp event_relevant?(_event, _state), do: true
+  defp event_relevant?(_event, _state), do: false
 
   # --- SSE Event Handling ---
 

@@ -27,7 +27,10 @@ defmodule Harness.Providers.OpenCodeRuntime do
   alias Harness.OpenCode.RuntimeKey
   alias Harness.OpenCode.RuntimeRegistry
 
-  @sse_reconnect_delay 1_000
+  @sse_initial_delay 1_000
+  @sse_max_delay 60_000
+  @sse_max_retries 30
+  @sse_backoff_multiplier 1.5
   @idle_ttl_ms 5 * 60 * 1_000
   @health_check_interval_ms 30_000
 
@@ -45,7 +48,8 @@ defmodule Harness.Providers.OpenCodeRuntime do
     ready: false,
     ready_waiters: [],
     health: :booting,
-    idle_timer_ref: nil
+    idle_timer_ref: nil,
+    sse_reconnect_attempts: 0
   ]
 
   # --- Public API ---
@@ -58,47 +62,62 @@ defmodule Harness.Providers.OpenCodeRuntime do
   end
 
   @doc """
-  Find or create a shared runtime for the given key.
+  Atomically find-or-create a shared runtime AND subscribe the caller
+  for SSE events. Combines lease + subscribe into one operation so
+  there is no window where the ref count is incremented but the caller
+  is not yet monitored.
+
   Returns `{:ok, runtime_pid}` or `{:error, reason}`.
   """
-  @spec lease(RuntimeKey.t(), map()) :: {:ok, pid()} | {:error, term()}
-  def lease(%RuntimeKey{} = key, params) do
+  @max_lease_retries 3
+
+  @spec lease_and_subscribe(RuntimeKey.t(), map(), String.t(), pid()) ::
+          {:ok, pid()} | {:error, term()}
+  def lease_and_subscribe(%RuntimeKey{} = key, params, thread_id, wrapper_pid) do
+    do_lease_and_subscribe(key, params, thread_id, wrapper_pid, @max_lease_retries)
+  end
+
+  defp do_lease_and_subscribe(_key, _params, _thread_id, _wrapper_pid, 0) do
+    {:error, {:lease_failed, :retries_exhausted}}
+  end
+
+  defp do_lease_and_subscribe(key, params, thread_id, wrapper_pid, attempts_left) do
     case RuntimeRegistry.lookup(key) do
       {:ok, pid} ->
-        # Runtime exists — increment ref count
-        case RuntimeRegistry.increment_ref(key) do
-          {:ok, _count} -> {:ok, pid}
-          {:error, :not_found} -> start_new_runtime(key, params)
+        case GenServer.call(pid, {:lease_and_subscribe, key, thread_id, wrapper_pid}) do
+          :ok ->
+            {:ok, pid}
+
+          {:error, :not_found} ->
+            do_lease_and_subscribe(key, params, thread_id, wrapper_pid, attempts_left - 1)
         end
 
       :error ->
-        start_new_runtime(key, params)
+        case start_new_runtime_subscribed(key, params, thread_id, wrapper_pid) do
+          {:ok, pid} ->
+            {:ok, pid}
+
+          {:error, {:registration_race, _}} ->
+            do_lease_and_subscribe(key, params, thread_id, wrapper_pid, attempts_left - 1)
+
+          {:error, reason} ->
+            {:error, reason}
+        end
     end
   end
 
   @doc """
-  Release a thread's lease on a runtime. Decrements ref count.
-  When count reaches 0, schedules idle TTL shutdown.
+  Release a thread's lease on a runtime. Sends an unsubscribe cast
+  which handles both subscriber removal and ref count decrement.
   """
   @spec release(RuntimeKey.t(), String.t()) :: :ok
   def release(%RuntimeKey{} = key, thread_id) do
     case RuntimeRegistry.lookup(key) do
-      {:ok, pid} ->
-        RuntimeRegistry.decrement_ref(key)
-        GenServer.cast(pid, {:unsubscribe, thread_id})
-        :ok
-
-      :error ->
-        :ok
+      {:ok, pid} -> GenServer.cast(pid, {:unsubscribe, thread_id})
+      :error -> :ok
     end
-  end
 
-  @doc """
-  Subscribe a thread wrapper to receive SSE events from this runtime.
-  """
-  @spec subscribe(pid(), String.t(), pid()) :: :ok
-  def subscribe(runtime_pid, thread_id, wrapper_pid) do
-    GenServer.call(runtime_pid, {:subscribe, thread_id, wrapper_pid})
+    :ok
   end
 
   @doc """
@@ -282,7 +301,7 @@ defmodule Harness.Providers.OpenCodeRuntime do
   def handle_info({:sse_chunk, chunk}, state) do
     buffer = (state.sse_buffer || "") <> chunk
     {events, remaining} = parse_sse_events(buffer)
-    state = %{state | sse_buffer: remaining}
+    state = %{state | sse_buffer: remaining, sse_reconnect_attempts: 0}
 
     Enum.each(events, fn event ->
       fanout_event(state, event)
@@ -295,29 +314,19 @@ defmodule Harness.Providers.OpenCodeRuntime do
   @impl true
   def handle_info({:sse_event, event}, state) do
     fanout_event(state, event)
-    {:noreply, state}
+    {:noreply, %{state | sse_reconnect_attempts: 0}}
   end
 
   # SSE listener died
   @impl true
   def handle_info({:sse_down, reason}, state) do
-    unless state.stopped do
-      Logger.warning("Runtime SSE listener stopped: #{inspect(reason)}, reconnecting...")
-      Process.send_after(self(), :reconnect_sse, @sse_reconnect_delay)
-    end
-
-    {:noreply, %{state | sse_pid: nil}}
+    schedule_sse_reconnect(state, reason)
   end
 
   # SSE process monitor DOWN
   @impl true
   def handle_info({:DOWN, _ref, :process, pid, reason}, %{sse_pid: pid} = state) do
-    unless state.stopped do
-      Logger.warning("Runtime SSE process died: #{inspect(reason)}, reconnecting...")
-      Process.send_after(self(), :reconnect_sse, @sse_reconnect_delay)
-    end
-
-    {:noreply, %{state | sse_pid: nil}}
+    schedule_sse_reconnect(state, reason)
   end
 
   # Subscriber wrapper process died
@@ -414,15 +423,32 @@ defmodule Harness.Providers.OpenCodeRuntime do
 
   # --- Subscriber management ---
 
+  # Atomic lease + subscribe: increment ref count, monitor, and add to
+  # subscribers in a single GenServer.call — no gap for the caller to die
+  # without cleanup.
   @impl true
-  def handle_call({:subscribe, thread_id, wrapper_pid}, _from, state) do
+  def handle_call({:lease_and_subscribe, key, thread_id, wrapper_pid}, _from, state) do
+    case RuntimeRegistry.increment_ref(key) do
+      {:ok, _count} ->
+        Process.monitor(wrapper_pid)
+        subscribers = Map.put(state.subscribers, thread_id, wrapper_pid)
+        state = %{state | subscribers: subscribers}
+        state = cancel_idle_timer(state)
+        {:reply, :ok, state}
+
+      {:error, :not_found} ->
+        {:reply, {:error, :not_found}, state}
+    end
+  end
+
+  # Subscribe without incrementing — used after start_new_runtime where
+  # register/2 already set ref_count to 1.
+  @impl true
+  def handle_call({:subscribe_initial, thread_id, wrapper_pid}, _from, state) do
     Process.monitor(wrapper_pid)
     subscribers = Map.put(state.subscribers, thread_id, wrapper_pid)
     state = %{state | subscribers: subscribers}
-
-    # Cancel idle shutdown if one was scheduled
     state = cancel_idle_timer(state)
-
     {:reply, :ok, state}
   end
 
@@ -564,9 +590,15 @@ defmodule Harness.Providers.OpenCodeRuntime do
 
   @impl true
   def handle_cast({:unsubscribe, thread_id}, state) do
-    subscribers = Map.delete(state.subscribers, thread_id)
-    state = %{state | subscribers: subscribers}
-    maybe_schedule_idle_shutdown(state)
+    case Map.pop(state.subscribers, thread_id) do
+      {nil, _subscribers} ->
+        # Already removed (DOWN handler won the race) — skip decrement
+        {:noreply, state}
+
+      {_pid, remaining} ->
+        RuntimeRegistry.decrement_ref(state.runtime_key)
+        maybe_schedule_idle_shutdown(%{state | subscribers: remaining})
+    end
   end
 
   # --- Terminate ---
@@ -840,6 +872,46 @@ defmodule Harness.Providers.OpenCodeRuntime do
     end)
   end
 
+  # --- SSE Reconnect with Backoff ---
+
+  defp schedule_sse_reconnect(state, reason) do
+    if state.stopped do
+      {:noreply, %{state | sse_pid: nil}}
+    else
+      attempts = state.sse_reconnect_attempts + 1
+
+      if attempts > @sse_max_retries do
+        Logger.error(
+          "Runtime SSE reconnect exhausted after #{attempts} attempts " <>
+            "(key: #{RuntimeKey.to_string(state.runtime_key)})"
+        )
+
+        Enum.each(state.subscribers, fn {_thread_id, wrapper_pid} ->
+          send(wrapper_pid, {:runtime_sse_degraded, self()})
+        end)
+
+        {:noreply, %{state | sse_pid: nil, health: :degraded, sse_reconnect_attempts: attempts}}
+      else
+        delay = sse_backoff_delay(attempts)
+
+        Logger.warning(
+          "Runtime SSE stopped: #{inspect(reason)}, " <>
+            "reconnecting in #{delay}ms (attempt #{attempts}/#{@sse_max_retries})..."
+        )
+
+        Process.send_after(self(), :reconnect_sse, delay)
+        {:noreply, %{state | sse_pid: nil, sse_reconnect_attempts: attempts}}
+      end
+    end
+  end
+
+  defp sse_backoff_delay(attempt) do
+    base = @sse_initial_delay * :math.pow(@sse_backoff_multiplier, attempt - 1)
+    capped = min(round(base), @sse_max_delay)
+    jitter = :rand.uniform(max(div(capped, 10), 1))
+    capped + jitter
+  end
+
   # --- Idle TTL ---
 
   defp maybe_schedule_idle_shutdown(state) do
@@ -913,32 +985,26 @@ defmodule Harness.Providers.OpenCodeRuntime do
 
   # --- Starting a new runtime ---
 
-  defp start_new_runtime(key, params) do
+  defp start_new_runtime_subscribed(key, params, thread_id, wrapper_pid) do
     child_spec = {__MODULE__, %{runtime_key: key, params: params}}
 
     case DynamicSupervisor.start_child(Harness.RuntimeSupervisor, child_spec) do
       {:ok, pid} ->
         case RuntimeRegistry.register(key, pid) do
           :ok ->
+            # register/2 sets ref_count=1 — subscribe without incrementing
+            GenServer.call(pid, {:subscribe_initial, thread_id, wrapper_pid})
             {:ok, pid}
 
           {:error, :already_registered} ->
-            # Race condition: another thread registered between our lookup and register.
-            # Kill the one we just started and use the existing one.
+            # Race: another thread registered between our lookup and register.
+            # Kill ours and retry via the caller's retry loop.
             DynamicSupervisor.terminate_child(Harness.RuntimeSupervisor, pid)
-
-            case RuntimeRegistry.lookup(key) do
-              {:ok, existing_pid} ->
-                RuntimeRegistry.increment_ref(key)
-                {:ok, existing_pid}
-
-              :error ->
-                {:error, "Runtime registration race — retry"}
-            end
+            {:error, {:registration_race, RuntimeKey.to_string(key)}}
         end
 
       {:error, reason} ->
-        {:error, reason}
+        {:error, {:runtime_start_failed, reason}}
     end
   end
 end

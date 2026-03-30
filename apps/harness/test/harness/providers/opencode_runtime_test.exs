@@ -3,11 +3,15 @@ defmodule Harness.Providers.OpenCodeRuntimeTest do
 
   alias Harness.Providers.OpenCodeRuntime
 
+  setup_all do
+    Code.ensure_loaded!(OpenCodeRuntime)
+    :ok
+  end
+
   test "exports the shared runtime public API" do
     assert function_exported?(OpenCodeRuntime, :start_link, 1)
-    assert function_exported?(OpenCodeRuntime, :lease, 2)
+    assert function_exported?(OpenCodeRuntime, :lease_and_subscribe, 4)
     assert function_exported?(OpenCodeRuntime, :release, 2)
-    assert function_exported?(OpenCodeRuntime, :subscribe, 3)
     assert function_exported?(OpenCodeRuntime, :wait_for_ready, 1)
     assert function_exported?(OpenCodeRuntime, :wait_for_ready, 2)
     assert function_exported?(OpenCodeRuntime, :get_base_url, 1)

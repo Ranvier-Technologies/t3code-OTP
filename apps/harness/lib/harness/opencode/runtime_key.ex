@@ -84,11 +84,24 @@ defmodule Harness.OpenCode.RuntimeKey do
 
   defp hash_mcp_config(config) when is_map(config) do
     config
-    |> Jason.encode!()
+    |> canonical_term()
+    |> :erlang.term_to_binary()
     |> then(&:crypto.hash(:sha256, &1))
     |> Base.encode16(case: :lower)
     |> String.slice(0, 16)
   end
 
   defp hash_mcp_config(_), do: nil
+
+  # Sort map keys recursively for deterministic hashing regardless of
+  # construction order. Converts maps to sorted keyword lists so
+  # term_to_binary produces identical output for logically equal configs.
+  defp canonical_term(map) when is_map(map) do
+    map
+    |> Enum.sort_by(fn {k, _} -> k end)
+    |> Enum.map(fn {k, v} -> {k, canonical_term(v)} end)
+  end
+
+  defp canonical_term(list) when is_list(list), do: Enum.map(list, &canonical_term/1)
+  defp canonical_term(value), do: value
 end

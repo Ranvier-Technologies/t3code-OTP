@@ -19,6 +19,14 @@ defmodule Harness.Providers.OpenCodeSessionTest do
     assert function_exported?(OpenCodeSession, :stop, 1)
   end
 
+  # event_relevant?/2 is private, so we test the struct-level contract:
+  # events without "data" and without a recognized "type" should not leak
+  # across sessions. We verify the struct shape supports session filtering.
+  test "struct includes opencode_session_id for event filtering" do
+    session = %OpenCodeSession{}
+    assert Map.has_key?(session, :opencode_session_id)
+  end
+
   test "struct has runtime-related fields (Sprint 2 shared runtime)" do
     session = %OpenCodeSession{}
     assert Map.has_key?(session, :runtime_key)
