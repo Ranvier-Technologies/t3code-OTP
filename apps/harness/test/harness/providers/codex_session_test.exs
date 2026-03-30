@@ -4,6 +4,8 @@ defmodule Harness.Providers.CodexSessionTest do
   alias Harness.Providers.CodexSession
 
   test "exports the provider session callbacks used by SessionManager" do
+    Code.ensure_loaded!(CodexSession)
+
     assert function_exported?(CodexSession, :start_link, 1)
     assert function_exported?(CodexSession, :wait_for_ready, 1)
     assert function_exported?(CodexSession, :wait_for_ready, 2)
