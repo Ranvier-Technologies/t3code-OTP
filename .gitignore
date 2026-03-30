@@ -9,6 +9,7 @@ apps/*/dist
 packages/*/dist
 .env
 .env.local
+opencode.jsonc
 build/
 .logs/
 release/
