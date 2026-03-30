@@ -161,7 +161,9 @@ defmodule Harness.OpenCode.RuntimeRegistry do
     # Clean up monitor if any
     state =
       case Map.pop(state.monitors, str_key) do
-        {nil, monitors} -> %{state | monitors: monitors}
+        {nil, monitors} ->
+          %{state | monitors: monitors}
+
         {ref, monitors} ->
           Process.demonitor(ref, [:flush])
           %{state | monitors: monitors}

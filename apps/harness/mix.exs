@@ -3,7 +3,7 @@ defmodule Harness.MixProject do
 
   @doc """
   Define the Mix project configuration for the Harness application.
-  
+
   The returned keyword list includes the project's metadata and build configuration:
     - `:app` — atom identifying the OTP application.
     - `:version` — project version string.

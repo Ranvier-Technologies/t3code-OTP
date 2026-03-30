@@ -117,9 +117,14 @@ defmodule Harness.SnapshotServer.ReconciliationTest do
   test "reconciles running sessions to error on boot" do
     # Seed SQL with a running session (simulates crash mid-turn)
     Storage.upsert_session(make_session("thread-running", status: :running, last_sequence: 5))
+
     Storage.insert_event(%{
-      event_id: "e1", thread_id: "thread-running", provider: "codex",
-      kind: "session", method: "session/connecting", created_at: "2026-03-24T20:00:00Z"
+      event_id: "e1",
+      thread_id: "thread-running",
+      provider: "codex",
+      kind: "session",
+      method: "session/connecting",
+      created_at: "2026-03-24T20:00:00Z"
     })
 
     # Start SnapshotServer — triggers recovery + reconciliation
@@ -135,9 +140,14 @@ defmodule Harness.SnapshotServer.ReconciliationTest do
 
   test "reconciles connecting sessions to error on boot" do
     Storage.upsert_session(make_session("thread-conn", status: :connecting, last_sequence: 3))
+
     Storage.insert_event(%{
-      event_id: "e1", thread_id: "thread-conn", provider: "codex",
-      kind: "session", method: "session/connecting", created_at: "2026-03-24T20:00:00Z"
+      event_id: "e1",
+      thread_id: "thread-conn",
+      provider: "codex",
+      kind: "session",
+      method: "session/connecting",
+      created_at: "2026-03-24T20:00:00Z"
     })
 
     {:ok, _} = SnapshotServer.start_link(nil)
@@ -168,8 +178,11 @@ defmodule Harness.SnapshotServer.ReconciliationTest do
     Storage.upsert_session(make_session("thread-stale", status: :running, last_sequence: 5))
     # Need at least one event so max_sequence > 0
     Storage.insert_event(%{
-      event_id: "e1", thread_id: "thread-stale", provider: "codex",
-      kind: "notification", method: "turn/started",
+      event_id: "e1",
+      thread_id: "thread-stale",
+      provider: "codex",
+      kind: "notification",
+      method: "turn/started",
       payload: %{"turn" => %{"id" => "t1"}},
       created_at: "2026-03-24T20:00:00Z"
     })
@@ -205,6 +218,7 @@ defmodule Harness.SnapshotServer.ReconciliationTest do
 
   test "clears active_turn on reconciled sessions" do
     active_turn = %{"turn_id" => "turn-99", "status" => "running"}
+
     Storage.upsert_session(
       make_session("thread-turn", status: :running, active_turn: active_turn, last_sequence: 5)
     )

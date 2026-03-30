@@ -70,7 +70,6 @@ defmodule Harness.Providers.OpenCodeSession do
     permission_timing_logged: false
   ]
 
-
   # --- Public API ---
 
   @impl Harness.Providers.ProviderBehaviour
@@ -121,7 +120,6 @@ defmodule Harness.Providers.OpenCodeSession do
   def wait_for_ready(pid, timeout \\ 30_000) do
     GenServer.call(pid, :wait_for_ready, timeout)
   end
-
 
   # --- GenServer Callbacks ---
 
@@ -180,9 +178,7 @@ defmodule Harness.Providers.OpenCodeSession do
   @impl true
   def handle_info({:DOWN, ref, :process, _pid, reason}, %{runtime_ref: ref} = state) do
     unless state.stopped do
-      Logger.warning(
-        "OpenCode runtime died (#{inspect(reason)}) for thread #{state.thread_id}"
-      )
+      Logger.warning("OpenCode runtime died (#{inspect(reason)}) for thread #{state.thread_id}")
 
       state = maybe_complete_turn(state, "failed")
 
@@ -242,7 +238,6 @@ defmodule Harness.Providers.OpenCodeSession do
   def handle_info(_msg, state) do
     {:noreply, state}
   end
-
 
   # --- Wait for Ready ---
 
@@ -542,7 +537,6 @@ defmodule Harness.Providers.OpenCodeSession do
     {:reply, {:ok, %{threadId: state.thread_id, turns: []}}, state}
   end
 
-
   @impl true
   def terminate(_reason, state) do
     state = %{state | stopped: true}
@@ -577,7 +571,6 @@ defmodule Harness.Providers.OpenCodeSession do
 
     :ok
   end
-
 
   # --- Private: Setup after Lease+Subscribe ---
 
@@ -692,7 +685,6 @@ defmodule Harness.Providers.OpenCodeSession do
     end)
   end
 
-
   # --- SSE Event Filtering ---
 
   # Determine whether an SSE event from the shared runtime is relevant to
@@ -721,7 +713,10 @@ defmodule Harness.Providers.OpenCodeSession do
   end
 
   defp event_relevant?(event, _state) do
-    Logger.debug("Dropping unrecognized SSE event shape: #{inspect(Map.get(event, "type", "unknown"), limit: 100)}")
+    Logger.debug(
+      "Dropping unrecognized SSE event shape: #{inspect(Map.get(event, "type", "unknown"), limit: 100)}"
+    )
+
     false
   end
 
@@ -963,7 +958,6 @@ defmodule Harness.Providers.OpenCodeSession do
 
   defp handle_sse_event(_, state), do: state
 
-
   # --- Private: Tool Part Handler ---
 
   defp handle_tool_part(state, part, turn_id) do
@@ -1137,7 +1131,6 @@ defmodule Harness.Providers.OpenCodeSession do
       state
     end
   end
-
 
   # --- Persisted Session ID ---
 
@@ -1326,9 +1319,7 @@ defmodule Harness.Providers.OpenCodeSession do
         count = map_size(servers)
 
         if count > 0 do
-          Logger.info(
-            "Rehydrating #{count} MCP server statuses for thread #{state.thread_id}"
-          )
+          Logger.info("Rehydrating #{count} MCP server statuses for thread #{state.thread_id}")
         end
 
         Enum.each(servers, fn {name, raw} ->

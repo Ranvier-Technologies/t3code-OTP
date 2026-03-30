@@ -62,8 +62,19 @@ defmodule Harness.OpenCode.RuntimeKeyTest do
 
     test "mcp_config hash is stable regardless of map key insertion order" do
       # Construct maps with identical content but potentially different internal order
-      config_a = Map.new([{"z_last", 1}, {"a_first", 2}, {"m_middle", %{"nested_b" => 10, "nested_a" => 20}}])
-      config_b = Map.new([{"a_first", 2}, {"m_middle", %{"nested_a" => 20, "nested_b" => 10}}, {"z_last", 1}])
+      config_a =
+        Map.new([
+          {"z_last", 1},
+          {"a_first", 2},
+          {"m_middle", %{"nested_b" => 10, "nested_a" => 20}}
+        ])
+
+      config_b =
+        Map.new([
+          {"a_first", 2},
+          {"m_middle", %{"nested_a" => 20, "nested_b" => 10}},
+          {"z_last", 1}
+        ])
 
       params_a = %{"cwd" => "/tmp/project", "mcp_config" => config_a}
       params_b = %{"cwd" => "/tmp/project", "mcp_config" => config_b}

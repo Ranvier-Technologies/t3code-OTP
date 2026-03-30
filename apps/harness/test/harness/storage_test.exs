@@ -197,15 +197,16 @@ defmodule Harness.StorageTest do
   # --- Pending request tests ---
 
   test "insert and retrieve pending requests" do
-    :ok = Storage.insert_pending_request(%{
-      request_id: "req-1",
-      thread_id: "t1",
-      provider: "codex",
-      request_type: "command_execution_approval",
-      method: "request/opened",
-      payload: %{"tool" => "bash", "command" => "ls"},
-      created_at: "2026-03-25T20:00:00Z"
-    })
+    :ok =
+      Storage.insert_pending_request(%{
+        request_id: "req-1",
+        thread_id: "t1",
+        provider: "codex",
+        request_type: "command_execution_approval",
+        method: "request/opened",
+        payload: %{"tool" => "bash", "command" => "ls"},
+        created_at: "2026-03-25T20:00:00Z"
+      })
 
     pending = Storage.get_pending_requests()
     assert length(pending) == 1
@@ -215,14 +216,15 @@ defmodule Harness.StorageTest do
   end
 
   test "resolve_pending_request deletes the row" do
-    :ok = Storage.insert_pending_request(%{
-      request_id: "req-1",
-      thread_id: "t1",
-      provider: "codex",
-      request_type: "command_execution_approval",
-      payload: %{},
-      created_at: "2026-03-25T20:00:00Z"
-    })
+    :ok =
+      Storage.insert_pending_request(%{
+        request_id: "req-1",
+        thread_id: "t1",
+        provider: "codex",
+        request_type: "command_execution_approval",
+        payload: %{},
+        created_at: "2026-03-25T20:00:00Z"
+      })
 
     assert length(Storage.get_pending_requests()) == 1
     :ok = Storage.resolve_pending_request("req-1")
@@ -231,14 +233,15 @@ defmodule Harness.StorageTest do
 
   test "get_pending_requests filters by thread_id" do
     for {req_id, thread} <- [{"r1", "t1"}, {"r2", "t1"}, {"r3", "t2"}] do
-      :ok = Storage.insert_pending_request(%{
-        request_id: req_id,
-        thread_id: thread,
-        provider: "codex",
-        request_type: "approval",
-        payload: %{},
-        created_at: "2026-03-25T20:00:00Z"
-      })
+      :ok =
+        Storage.insert_pending_request(%{
+          request_id: req_id,
+          thread_id: thread,
+          provider: "codex",
+          request_type: "approval",
+          payload: %{},
+          created_at: "2026-03-25T20:00:00Z"
+        })
     end
 
     assert length(Storage.get_pending_requests("t1")) == 2
@@ -262,14 +265,15 @@ defmodule Harness.StorageTest do
   end
 
   test "reset! clears pending requests" do
-    :ok = Storage.insert_pending_request(%{
-      request_id: "req-1",
-      thread_id: "t1",
-      provider: "codex",
-      request_type: "approval",
-      payload: %{},
-      created_at: "2026-03-25T20:00:00Z"
-    })
+    :ok =
+      Storage.insert_pending_request(%{
+        request_id: "req-1",
+        thread_id: "t1",
+        provider: "codex",
+        request_type: "approval",
+        payload: %{},
+        created_at: "2026-03-25T20:00:00Z"
+      })
 
     Storage.reset!()
     assert length(Storage.get_pending_requests()) == 0
@@ -374,7 +378,12 @@ defmodule Harness.StorageTest do
     cursor = Jason.encode!(%{"threadId" => "codex-abc"})
     :ok = Storage.upsert_binding("t1", "codex", cursor)
 
-    params = %{"threadId" => "t1", "provider" => "codex", "resumeCursor" => %{"threadId" => "explicit"}}
+    params = %{
+      "threadId" => "t1",
+      "provider" => "codex",
+      "resumeCursor" => %{"threadId" => "explicit"}
+    }
+
     result = SessionManager.maybe_inject_resume_cursor(params, "t1", "codex")
 
     assert result["resumeCursor"] == %{"threadId" => "explicit"}
@@ -567,7 +576,11 @@ defmodule Harness.StorageTest do
           provider: "claudeAgent",
           kind: :session,
           method: "session/connecting",
-          payload: %{"model" => "claude-sonnet-4-6", "cwd" => "/tmp", "runtimeMode" => "full-access"}
+          payload: %{
+            "model" => "claude-sonnet-4-6",
+            "cwd" => "/tmp",
+            "runtimeMode" => "full-access"
+          }
         })
       )
 
