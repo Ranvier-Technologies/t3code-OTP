@@ -312,6 +312,13 @@ defmodule HarnessWeb.HarnessChannel do
      socket}
   end
 
+  # Catch-all for unrecognized commands — return an explicit error so the
+  # Node client gets an immediate phx_reply instead of hanging for 30s.
+  @impl true
+  def handle_in(event, _params, socket) do
+    {:reply, {:error, %{message: "Unknown command: #{event}"}}, socket}
+  end
+
   # --- PubSub → Channel Push ---
 
   @impl true

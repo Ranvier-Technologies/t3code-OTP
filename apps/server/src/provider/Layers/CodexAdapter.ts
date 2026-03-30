@@ -631,7 +631,12 @@ function mapToRuntimeEvents(
   }
 
   if (event.method === "item/requestApproval/decision" && event.requestId) {
-    const decision = Schema.decodeUnknownSync(ProviderApprovalDecision)(payload?.decision);
+    let decision: typeof ProviderApprovalDecision.Type | undefined;
+    try {
+      decision = Schema.decodeUnknownSync(ProviderApprovalDecision)(payload?.decision);
+    } catch {
+      decision = undefined;
+    }
     const requestType =
       event.requestKind !== undefined
         ? toRequestTypeFromKind(event.requestKind)
