@@ -274,6 +274,24 @@ defmodule Harness.Providers.AcpSession do
       JsonRpc.encode_notification("session/cancel", %{"sessionId" => state.acp_session_id})
     )
 
+    # Clear the pending session/prompt entry so a stale response doesn't
+    # complete the wrong turn if a new send_turn arrives before the old
+    # prompt response.
+    state =
+      if state.current_prompt_rpc_id do
+        case Map.pop(state.pending, state.current_prompt_rpc_id) do
+          {%{from: from, timer: timer}, pending} ->
+            if timer, do: Process.cancel_timer(timer)
+            if from, do: GenServer.reply(from, {:ok, %{threadId: state.thread_id, turnId: state.current_turn_id}})
+            %{state | pending: pending}
+
+          {nil, _} ->
+            state
+        end
+      else
+        state
+      end
+
     state = complete_turn(state, "interrupted")
     {:reply, :ok, state}
   end
@@ -344,6 +362,7 @@ defmodule Harness.Providers.AcpSession do
   @impl true
   def terminate(_reason, state) do
     state = %{state | stopped: true}
+    Enum.each(state.ready_waiters, &GenServer.reply(&1, {:error, "Session terminated"}))
     _ = reject_all_pending(state, "Session terminated")
     emit_event(state, :session, "session/closed", %{})
 

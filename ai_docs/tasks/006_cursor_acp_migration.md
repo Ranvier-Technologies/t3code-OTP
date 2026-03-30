@@ -762,7 +762,7 @@ A working ACP adapter that streams text, handles tools, and manages approvals. N
   # Two types coexist:
   #   Outgoing: %{method: String.t(), from: GenServer.from() | nil, timer: reference() | nil}
   #   Incoming: %{kind: :provider_request, method: String.t(), params: map(), from: nil, timer: nil}
-  pending: %{String.t() => map()},
+  pending: %{integer() => map()},
 
   # Line buffer for partial ndjson lines
   buffer: String.t(),
@@ -781,7 +781,7 @@ A working ACP adapter that streams text, handles tools, and manages approvals. N
 1. ~~**Wire format is NOT standard JSON-RPC**~~ — **RESOLVED.** Live wire capture (2026-03-30) confirms Cursor 2.6.22 uses standard JSON-RPC 2.0, not ndjson-rpc. The `JsonRpc` module works directly. The ndjson-rpc framing in Julius's SDK is an Effect transport concern, not the on-the-wire protocol.
 2. ~~**CLI flag**~~ — **RESOLVED.** Real command is `cursor agent acp` (not `cursor acp`). Verified on Cursor 2.6.22. No `-e` flag visible in `--help`.
 3. **ACP spec version drift** — Julius targets v0.11.3. Cursor may ship breaking changes. The extension pass-through mitigates new methods; **breaking changes to known methods are NOT mitigated** (see #11). Pin spec version in a module attribute.
-4. **Authentication flow** — ACP requires `authenticate` with `{ methodId: "cursor_login" }`. The method ID comes from `initialize` response's `agentCapabilities.auth.methods[]`. If no auth methods available or auth fails, the session cannot start. Need graceful error with clear message. **Auth in headless environments** (CI, remote servers) may involve device flow or browser open — need clear error path.
+4. **Authentication flow** — ACP requires `authenticate` with `{ methodId: "cursor_login" }`. The method ID comes from `initialize` response's top-level `authMethods` array. If no auth methods available or auth fails, the session cannot start. Need graceful error with clear message. **Auth in headless environments** (CI, remote servers) may involve device flow or browser open — need clear error path.
 5. **Composite session/update** — Unlike Codex's granular events, ACP sends one composite `session/update` notification with a discriminated union. Each variant needs decomposition into harness events. **Reasoning uses `agent_thought_chunk`** (confirmed via wire capture) — a separate discriminant NOT listed in PR #1355's spec.
 6. **fs/terminal client callbacks** — ACP agent may request `fs/read_text_file`, `terminal/create`, etc. from the client. We advertise `false` for all of these in capabilities, but Cursor may still send them. **These can arrive on the first prompt** — must have error response stubs from Phase 1 (not deferred to Phase 5).
 7. **No rollback in ACP** — `rollback_thread` has no ACP equivalent. The callback returns `{:error, :not_supported}`.
