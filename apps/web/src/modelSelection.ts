@@ -59,9 +59,20 @@ const PROVIDER_CUSTOM_MODEL_CONFIG: Record<ProviderKind, ProviderCustomModelConf
     placeholder: "your-opencode-model-slug",
     example: "claude-sonnet-4-6",
   },
+  devin: {
+    provider: "devin",
+    title: "Devin",
+    description: "Devin currently exposes a single built-in model.",
+    placeholder: "devin-default",
+    example: "devin-default",
+  },
 };
 
 export const MODEL_PROVIDER_SETTINGS = Object.values(PROVIDER_CUSTOM_MODEL_CONFIG);
+
+function supportsCustomModels(provider: ProviderKind): boolean {
+  return provider !== "devin";
+}
 
 export function normalizeCustomModelSlugs(
   models: Iterable<string | null | undefined>,
@@ -114,17 +125,19 @@ export function getAppModelOptions(
   );
 
   const customModels = settings.providers[provider].customModels;
-  for (const slug of normalizeCustomModelSlugs(customModels, builtInModelSlugs, provider)) {
-    if (seen.has(slug)) {
-      continue;
-    }
+  if (supportsCustomModels(provider)) {
+    for (const slug of normalizeCustomModelSlugs(customModels, builtInModelSlugs, provider)) {
+      if (seen.has(slug)) {
+        continue;
+      }
 
-    seen.add(slug);
-    options.push({
-      slug,
-      name: slug,
-      isCustom: true,
-    });
+      seen.add(slug);
+      options.push({
+        slug,
+        name: slug,
+        isCustom: true,
+      });
+    }
   }
 
   const normalizedSelectedModel = normalizeModelSlug(selectedModel, provider);
@@ -132,6 +145,7 @@ export function getAppModelOptions(
     typeof trimmedSelectedModel === "string" &&
     options.some((option) => option.name.toLowerCase() === trimmedSelectedModel);
   if (
+    supportsCustomModels(provider) &&
     normalizedSelectedModel &&
     !seen.has(normalizedSelectedModel) &&
     !selectedModelMatchesExistingName
@@ -190,6 +204,12 @@ export function getCustomModelOptionsByProvider(
       providers,
       "opencode",
       selectedProvider === "opencode" ? selectedModel : undefined,
+    ),
+    devin: getAppModelOptions(
+      settings,
+      providers,
+      "devin",
+      selectedProvider === "devin" ? selectedModel : undefined,
     ),
   };
 }

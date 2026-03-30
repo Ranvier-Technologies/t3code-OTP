@@ -50,6 +50,7 @@ import { formatRelativeTime } from "../timestampFormat";
 import { ensureNativeApi, readNativeApi } from "../nativeApi";
 import { DEFAULT_UNIFIED_SETTINGS } from "@t3tools/contracts/settings";
 import { Equal } from "effect";
+import { getProviderModels } from "../providerModels";
 
 const THEME_OPTIONS = [
   {
@@ -88,6 +89,8 @@ type InstallProviderSettings = {
   homeDescription?: ReactNode;
   /** Short description shown when the provider has no live status from the Node server. */
   harnessDescription?: string;
+  supportsCustomModels?: boolean;
+  customModelPlaceholder?: string;
 };
 
 const PROVIDER_SETTINGS: readonly InstallProviderSettings[] = [
@@ -99,22 +102,36 @@ const PROVIDER_SETTINGS: readonly InstallProviderSettings[] = [
     homePathKey: "codexHomePath",
     homePlaceholder: "CODEX_HOME",
     homeDescription: "Optional custom Codex home and config directory.",
+    supportsCustomModels: true,
+    customModelPlaceholder: "gpt-6.7-codex-ultra-preview",
   },
   {
     provider: "claudeAgent",
     title: "Claude",
     binaryPlaceholder: "Claude binary path",
     binaryDescription: "Path to the Claude binary",
+    supportsCustomModels: true,
+    customModelPlaceholder: "claude-sonnet-5-0",
   },
   {
     provider: "cursor",
     title: "Cursor",
     harnessDescription: "Routed via Elixir harness",
+    supportsCustomModels: true,
+    customModelPlaceholder: "claude-4.6-sonnet-medium",
   },
   {
     provider: "opencode",
     title: "OpenCode",
     harnessDescription: "Routed via Elixir harness",
+    supportsCustomModels: true,
+    customModelPlaceholder: "claude-sonnet-4-6",
+  },
+  {
+    provider: "devin",
+    title: "Devin",
+    harnessDescription: "Exposed by the server runtime as a single built-in model.",
+    supportsCustomModels: false,
   },
 ];
 
@@ -320,6 +337,7 @@ function SettingsRouteView() {
     ),
     cursor: Boolean(settings.providers.cursor.customModels.length > 0),
     opencode: Boolean(settings.providers.opencode.customModels.length > 0),
+    devin: Boolean(settings.providers.devin.customModels.length > 0),
   });
   const [customModelInputByProvider, setCustomModelInputByProvider] = useState<
     Record<ProviderKind, string>
@@ -328,6 +346,7 @@ function SettingsRouteView() {
     claudeAgent: "",
     cursor: "",
     opencode: "",
+    devin: "",
   });
   const [customModelErrorByProvider, setCustomModelErrorByProvider] = useState<
     Partial<Record<ProviderKind, string | null>>
@@ -535,18 +554,21 @@ function SettingsRouteView() {
     const summary =
       isHarnessProvider && !liveProvider
         ? {
-            headline: "Connecting to harness…",
+            headline: "Checking provider…",
             detail: providerSettings.harnessDescription!,
           }
         : getProviderSummary(liveProvider);
     const models: ReadonlyArray<ServerProviderModel> =
-      liveProvider?.models ??
-      providerConfig.customModels.map((slug) => ({
-        slug,
-        name: slug,
-        isCustom: true,
-        capabilities: null,
-      }));
+      liveProvider && liveProvider.models.length > 0
+        ? liveProvider.models
+        : providerSettings.supportsCustomModels === false
+          ? getProviderModels(serverProviders, providerSettings.provider)
+          : providerConfig.customModels.map((slug) => ({
+              slug,
+              name: slug,
+              isCustom: true,
+              capabilities: null,
+            }));
     const binaryPathValue = "binaryPath" in providerConfig ? providerConfig.binaryPath : undefined;
     const hasBinaryPath = Boolean(providerSettings.binaryPlaceholder);
     const isDirty = !Equal.equals(providerConfig, defaultProviderConfig);
@@ -569,6 +591,8 @@ function SettingsRouteView() {
       statusStyle,
       summary,
       versionLabel: getProviderVersionLabel(liveProvider?.version),
+      supportsCustomModels: providerSettings.supportsCustomModels ?? true,
+      customModelPlaceholder: providerSettings.customModelPlaceholder,
     };
   });
 
@@ -590,12 +614,14 @@ function SettingsRouteView() {
       claudeAgent: false,
       cursor: false,
       opencode: false,
+      devin: false,
     });
     setCustomModelInputByProvider({
       codex: "",
       claudeAgent: "",
       cursor: "",
       opencode: "",
+      devin: "",
     });
     setCustomModelErrorByProvider({});
   }
@@ -1257,42 +1283,47 @@ function SettingsRouteView() {
                               })}
                             </div>
                             <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-                              <Input
-                                id={`custom-model-${providerCard.provider}`}
-                                value={customModelInput}
-                                onChange={(event) => {
-                                  const value = event.target.value;
-                                  setCustomModelInputByProvider((existing) => ({
-                                    ...existing,
-                                    [providerCard.provider]: value,
-                                  }));
-                                  if (customModelError) {
-                                    setCustomModelErrorByProvider((existing) => ({
-                                      ...existing,
-                                      [providerCard.provider]: null,
-                                    }));
-                                  }
-                                }}
-                                onKeyDown={(event) => {
-                                  if (event.key !== "Enter") return;
-                                  event.preventDefault();
-                                  addCustomModel(providerCard.provider);
-                                }}
-                                placeholder={
-                                  providerCard.provider === "codex"
-                                    ? "gpt-6.7-codex-ultra-preview"
-                                    : "claude-sonnet-5-0"
-                                }
-                                spellCheck={false}
-                              />
-                              <Button
-                                className="shrink-0"
-                                variant="outline"
-                                onClick={() => addCustomModel(providerCard.provider)}
-                              >
-                                <PlusIcon className="size-3.5" />
-                                Add
-                              </Button>
+                              {providerCard.supportsCustomModels ? (
+                                <>
+                                  <Input
+                                    id={`custom-model-${providerCard.provider}`}
+                                    value={customModelInput}
+                                    onChange={(event) => {
+                                      const value = event.target.value;
+                                      setCustomModelInputByProvider((existing) => ({
+                                        ...existing,
+                                        [providerCard.provider]: value,
+                                      }));
+                                      if (customModelError) {
+                                        setCustomModelErrorByProvider((existing) => ({
+                                          ...existing,
+                                          [providerCard.provider]: null,
+                                        }));
+                                      }
+                                    }}
+                                    onKeyDown={(event) => {
+                                      if (event.key !== "Enter") return;
+                                      event.preventDefault();
+                                      addCustomModel(providerCard.provider);
+                                    }}
+                                    placeholder={providerCard.customModelPlaceholder}
+                                    spellCheck={false}
+                                  />
+                                  <Button
+                                    className="shrink-0"
+                                    variant="outline"
+                                    onClick={() => addCustomModel(providerCard.provider)}
+                                  >
+                                    <PlusIcon className="size-3.5" />
+                                    Add
+                                  </Button>
+                                </>
+                              ) : (
+                                <p className="text-xs text-muted-foreground">
+                                  Devin currently uses the built-in <code>devin-default</code> model
+                                  only.
+                                </p>
+                              )}
                             </div>
                             {customModelError ? (
                               <p className="mt-2 text-xs text-destructive">{customModelError}</p>

@@ -154,8 +154,8 @@ export function buildLegacyServerSettingsMigrationPatch(legacySettings: Record<s
 
   if (Schema.is(ModelSelection)(legacySettings.textGenerationModelSelection)) {
     const sel = legacySettings.textGenerationModelSelection;
-    // ServerSettingsPatch only accepts codex/claudeAgent model selections
-    if (sel.provider === "codex" || sel.provider === "claudeAgent") {
+    // ServerSettingsPatch accepts provider-specific text generation selections
+    if (sel.provider === "codex" || sel.provider === "claudeAgent" || sel.provider === "devin") {
       patch.textGenerationModelSelection = sel;
     }
   }

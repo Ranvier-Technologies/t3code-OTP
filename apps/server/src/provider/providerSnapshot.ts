@@ -1,5 +1,6 @@
 import type {
   ProviderCapabilities,
+  ProviderKind,
   ServerProvider,
   ServerProviderAuthStatus,
   ServerProviderModel,
@@ -83,12 +84,15 @@ export function providerModelsFromSettings(
   provider: ServerProvider["provider"],
   customModels: ReadonlyArray<string>,
 ): ReadonlyArray<ServerProviderModel> {
+  const knownProviders = new Set<ProviderKind>(["codex", "claudeAgent", "cursor", "opencode"]);
   const resolvedBuiltInModels = [...builtInModels];
   const seen = new Set(resolvedBuiltInModels.map((model) => model.slug));
   const customEntries: ServerProviderModel[] = [];
 
   for (const candidate of customModels) {
-    const normalized = normalizeModelSlug(candidate, provider);
+    const normalized = knownProviders.has(provider as ProviderKind)
+      ? normalizeModelSlug(candidate, provider as ProviderKind)
+      : (nonEmptyTrimmed(candidate) ?? null);
     if (!normalized || seen.has(normalized)) {
       continue;
     }

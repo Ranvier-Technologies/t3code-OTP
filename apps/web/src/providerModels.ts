@@ -23,11 +23,29 @@ const EMPTY_CAPABILITIES: ModelCapabilities = {
   promptInjectedEffortLevels: [],
 };
 
+const SYNTHETIC_PROVIDER_MODELS: Record<ProviderKind, ReadonlyArray<ServerProviderModel>> = {
+  codex: [],
+  claudeAgent: [],
+  cursor: [],
+  opencode: [],
+  devin: [
+    {
+      slug: "devin-default",
+      name: "Devin Default",
+      isCustom: false,
+      capabilities: null,
+    },
+  ],
+};
+
 export function getProviderModels(
   providers: ReadonlyArray<ServerProvider>,
   provider: ProviderKind,
 ): ReadonlyArray<ServerProviderModel> {
-  return providers.find((candidate) => candidate.provider === provider)?.models ?? [];
+  const serverModels = providers.find((candidate) => candidate.provider === provider)?.models;
+  return serverModels && serverModels.length > 0
+    ? serverModels
+    : SYNTHETIC_PROVIDER_MODELS[provider];
 }
 
 export function getProviderSnapshot(

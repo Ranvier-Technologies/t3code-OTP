@@ -1023,9 +1023,11 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const keybindings = serverConfigQuery.data?.keybindings ?? EMPTY_KEYBINDINGS;
   const availableEditors = serverConfigQuery.data?.availableEditors ?? EMPTY_AVAILABLE_EDITORS;
   const modelOptionsByProvider = useMemo(() => {
-    const discovered = (p: ProviderKind) =>
-      providerStatuses.find((s) => s.provider === p)?.models ?? [];
+    const discovered = (p: ProviderKind) => getProviderModels(providerStatuses, p);
     const custom = (p: ProviderKind) => {
+      if (p === "devin") {
+        return [];
+      }
       const slugs = settings.providers[p]?.customModels ?? [];
       const seen = new Set(discovered(p).map((m) => m.slug));
       return slugs
@@ -1037,6 +1039,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
       claudeAgent: [...discovered("claudeAgent"), ...custom("claudeAgent")],
       cursor: [...discovered("cursor"), ...custom("cursor")],
       opencode: [...discovered("opencode"), ...custom("opencode")],
+      devin: [...discovered("devin"), ...custom("devin")],
     };
   }, [providerStatuses, settings]);
   const selectedModelForPickerWithCustomFallback = useMemo(() => {

@@ -77,6 +77,14 @@ export const HarnessProviderSettings = Schema.Struct({
 });
 export type HarnessProviderSettings = typeof HarnessProviderSettings.Type;
 
+export const DevinSettings = Schema.Struct({
+  enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(() => true)),
+  orgId: TrimmedString.pipe(Schema.withDecodingDefault(() => "")),
+  baseUrl: TrimmedString.pipe(Schema.withDecodingDefault(() => "https://api.devin.ai")),
+  customModels: Schema.Array(Schema.String).pipe(Schema.withDecodingDefault(() => [])),
+});
+export type DevinSettings = typeof DevinSettings.Type;
+
 export const ServerSettings = Schema.Struct({
   enableAssistantStreaming: Schema.Boolean.pipe(Schema.withDecodingDefault(() => false)),
   defaultThreadEnvMode: ThreadEnvMode.pipe(
@@ -95,6 +103,7 @@ export const ServerSettings = Schema.Struct({
     claudeAgent: ClaudeSettings.pipe(Schema.withDecodingDefault(() => ({}))),
     cursor: HarnessProviderSettings.pipe(Schema.withDecodingDefault(() => ({}))),
     opencode: HarnessProviderSettings.pipe(Schema.withDecodingDefault(() => ({}))),
+    devin: DevinSettings.pipe(Schema.withDecodingDefault(() => ({}))),
   }).pipe(Schema.withDecodingDefault(() => ({}))),
 });
 export type ServerSettings = typeof ServerSettings.Type;
@@ -133,6 +142,18 @@ const ModelSelectionPatch = Schema.Union([
     model: Schema.optionalKey(TrimmedNonEmptyString),
     options: Schema.optionalKey(ClaudeModelOptionsPatch),
   }),
+  Schema.Struct({
+    provider: Schema.optionalKey(Schema.Literal("cursor")),
+    model: Schema.optionalKey(TrimmedNonEmptyString),
+  }),
+  Schema.Struct({
+    provider: Schema.optionalKey(Schema.Literal("opencode")),
+    model: Schema.optionalKey(TrimmedNonEmptyString),
+  }),
+  Schema.Struct({
+    provider: Schema.optionalKey(Schema.Literal("devin")),
+    model: Schema.optionalKey(TrimmedNonEmptyString),
+  }),
 ]);
 
 const CodexSettingsPatch = Schema.Struct({
@@ -153,6 +174,13 @@ const HarnessProviderSettingsPatch = Schema.Struct({
   customModels: Schema.optionalKey(Schema.Array(Schema.String)),
 });
 
+const DevinSettingsPatch = Schema.Struct({
+  enabled: Schema.optionalKey(Schema.Boolean),
+  orgId: Schema.optionalKey(Schema.String),
+  baseUrl: Schema.optionalKey(Schema.String),
+  customModels: Schema.optionalKey(Schema.Array(Schema.String)),
+});
+
 export const ServerSettingsPatch = Schema.Struct({
   enableAssistantStreaming: Schema.optionalKey(Schema.Boolean),
   defaultThreadEnvMode: Schema.optionalKey(ThreadEnvMode),
@@ -163,6 +191,7 @@ export const ServerSettingsPatch = Schema.Struct({
       claudeAgent: Schema.optionalKey(ClaudeSettingsPatch),
       cursor: Schema.optionalKey(HarnessProviderSettingsPatch),
       opencode: Schema.optionalKey(HarnessProviderSettingsPatch),
+      devin: Schema.optionalKey(DevinSettingsPatch),
     }),
   ),
 });

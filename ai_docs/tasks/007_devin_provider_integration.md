@@ -404,12 +404,12 @@ Phase 3 needs an explicit polling contract so the adapter does not become an unb
 
 **Recommended initial polling policy**
 
-| Remote state                                            | Poll interval | Notes                                               |
-| ------------------------------------------------------- | ------------- | --------------------------------------------------- |
-| `creating`, `claimed`, `running`, `resuming`            | `5s`          | Moderate polling while work is actively progressing |
-| `waiting_for_user`, `waiting_for_approval`              | `10s`         | Slow polling while blocked on external action       |
-| `suspended`                                             | `10s`         | Slow polling, but branch UX by `status_detail`      |
-| `exit`, `error`                                         | stop polling  | Terminal                                            |
+| Remote state                                 | Poll interval | Notes                                               |
+| -------------------------------------------- | ------------- | --------------------------------------------------- |
+| `creating`, `claimed`, `running`, `resuming` | `5s`          | Moderate polling while work is actively progressing |
+| `waiting_for_user`, `waiting_for_approval`   | `10s`         | Slow polling while blocked on external action       |
+| `suspended`                                  | `10s`         | Slow polling, but branch UX by `status_detail`      |
+| `exit`, `error`                              | stop polling  | Terminal                                            |
 
 **Failure backoff**
 
@@ -557,10 +557,12 @@ Lazy remote creation is a formal invariant:
 8. Add reconnect-safe recovery from persisted binding and cursor
 9. Add a safety ceiling for per-cycle pagination drain and global poll concurrency
 10. Handle mid-session auth or permission failure:
-   - detect `401` / permission loss
-   - stop polling cleanly
-   - emit a structured runtime error
-   - do not retry in a hot loop
+
+- detect `401` / permission loss
+- stop polling cleanly
+- emit a structured runtime error
+- do not retry in a hot loop
+
 11. **Verify:**
 
 - paginated messages are not replayed repeatedly
@@ -768,22 +770,28 @@ Not included in MVP:
    - `ManageOrgSessions`, `ViewOrgSessions`, `UseDevinSessions`, and maybe `ImpersonateOrgSessions` all matter. A partially permissioned service user can fail in non-obvious ways.
 
 10. **Capability mismatch with current UI**
-   - Existing T3 UX expects richer provider interactions. Devin must degrade explicitly rather than silently.
+
+- Existing T3 UX expects richer provider interactions. Devin must degrade explicitly rather than silently.
 
 11. **Polling load and rate budgeting**
-   - One poll loop per active session can turn into avoidable API pressure without explicit interval, backoff, jitter, and concurrency caps.
+
+- One poll loop per active session can turn into avoidable API pressure without explicit interval, backoff, jitter, and concurrency caps.
 
 12. **Lazy-create UX divergence**
-   - Devin remote sessions are created on first turn, not necessarily on `startSession`. That changes when failures surface and must be visible in product behavior.
+
+- Devin remote sessions are created on first turn, not necessarily on `startSession`. That changes when failures surface and must be visible in product behavior.
 
 13. **Runtime event contract creep**
-   - It will be tempting to add Devin-specific runtime event variants for convenience. That would ripple through ingestion, checkpoints, ws server, and UI. Prefer synthesis into the existing canonical runtime event model unless a real gap is proven.
+
+- It will be tempting to add Devin-specific runtime event variants for convenience. That would ripple through ingestion, checkpoints, ws server, and UI. Prefer synthesis into the existing canonical runtime event model unless a real gap is proven.
 
 14. **Over-factoring before behavior is proven**
-   - Adding many Devin-specific service abstractions up front may increase integration surface without reducing real implementation risk. The hard part is replay-safe polling behavior, not interface count.
+
+- Adding many Devin-specific service abstractions up front may increase integration surface without reducing real implementation risk. The hard part is replay-safe polling behavior, not interface count.
 
 15. **Mid-session auth revocation**
-   - If a `cog_` token is revoked or loses permissions while polling is active, the adapter must detect the `401`/permission failure, stop polling cleanly, emit a structured runtime error, and avoid retry hot loops.
+
+- If a `cog_` token is revoked or loses permissions while polling is active, the adapter must detect the `401`/permission failure, stop polling cleanly, emit a structured runtime error, and avoid retry hot loops.
 
 ## Success Criteria
 
@@ -825,14 +833,14 @@ Do not run `bun test`. If workspace tests are needed, use `bun run test`.
 
 ## LOC Estimates
 
-| Module                                 | MVP           | Full          | Notes                                                                               |
-| -------------------------------------- | ------------- | ------------- | ----------------------------------------------------------------------------------- |
-| `apps/server/src/provider/devinApi.ts` | 200-300       | 220-320       | REST client + DTO normalization for 8-ish endpoints                                 |
-| `DevinProvider` service + layer        | 150-200       | 170-220       | Config resolution, `/v3/self`, org validation, snapshot mapping                     |
+| Module                                 | MVP           | Full          | Notes                                                                                                   |
+| -------------------------------------- | ------------- | ------------- | ------------------------------------------------------------------------------------------------------- |
+| `apps/server/src/provider/devinApi.ts` | 200-300       | 220-320       | REST client + DTO normalization for 8-ish endpoints                                                     |
+| `DevinProvider` service + layer        | 150-200       | 170-220       | Config resolution, `/v3/self`, org validation, snapshot mapping                                         |
 | `DevinAdapter` service + layer         | 500-800       | 650-900       | Polling loop, cursor persistence, dedup, backoff, and canonical event synthesis are the variance driver |
-| Contract + web/provider wiring         | 50-100        | 80-140        | `ProviderKind`, defaults, settings, model helpers, UI selectors                     |
-| Tests                                  | 300-400       | 400-550       | REST client, provider snapshot, adapter flow, integration coverage                  |
-| **Net addition**                       | **1100-1600** | **1420-1980** | Conservative TypeScript-heavy estimate                                              |
+| Contract + web/provider wiring         | 50-100        | 80-140        | `ProviderKind`, defaults, settings, model helpers, UI selectors                                         |
+| Tests                                  | 300-400       | 400-550       | REST client, provider snapshot, adapter flow, integration coverage                                      |
+| **Net addition**                       | **1100-1600** | **1420-1980** | Conservative TypeScript-heavy estimate                                                                  |
 
 ## Source Notes
 

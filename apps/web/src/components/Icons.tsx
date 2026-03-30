@@ -143,6 +143,29 @@ export const OpenAI: Icon = (props) => (
   </svg>
 );
 
+export const DevinIcon: Icon = (props) => (
+  <svg {...props} viewBox="0 0 24 24" fill="none">
+    <path
+      d="M6 4.75h6.25c4.28 0 7 2.8 7 7.25s-2.72 7.25-7 7.25H6z"
+      fill="currentColor"
+      opacity="0.18"
+    />
+    <path
+      d="M6 4.75h6.25c4.28 0 7 2.8 7 7.25s-2.72 7.25-7 7.25H6z"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M9.25 8.25h2.8c2.24 0 3.7 1.44 3.7 3.75s-1.46 3.75-3.7 3.75h-2.8z"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
 export const ClaudeAI: Icon = (props) => (
   <svg {...props} preserveAspectRatio="xMidYMid" viewBox="0 0 256 257">
     <path

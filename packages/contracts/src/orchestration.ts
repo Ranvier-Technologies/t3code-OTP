@@ -27,7 +27,13 @@ export const ORCHESTRATION_WS_CHANNELS = {
   domainEvent: "orchestration.domainEvent",
 } as const;
 
-export const ProviderKind = Schema.Literals(["codex", "claudeAgent", "cursor", "opencode"]);
+export const ProviderKind = Schema.Literals([
+  "codex",
+  "claudeAgent",
+  "cursor",
+  "opencode",
+  "devin",
+]);
 export type ProviderKind = typeof ProviderKind.Type;
 export const ProviderApprovalPolicy = Schema.Literals([
   "untrusted",
@@ -70,11 +76,18 @@ export const OpenCodeModelSelection = Schema.Struct({
 });
 export type OpenCodeModelSelection = typeof OpenCodeModelSelection.Type;
 
+export const DevinModelSelection = Schema.Struct({
+  provider: Schema.Literal("devin"),
+  model: TrimmedNonEmptyString,
+});
+export type DevinModelSelection = typeof DevinModelSelection.Type;
+
 export const ModelSelection = Schema.Union([
   CodexModelSelection,
   ClaudeModelSelection,
   CursorModelSelection,
   OpenCodeModelSelection,
+  DevinModelSelection,
 ]);
 export type ModelSelection = typeof ModelSelection.Type;
 
@@ -166,6 +179,17 @@ export const DEFAULT_PROVIDER_CAPABILITIES: Record<ProviderKind, ProviderCapabil
     attachments: "basic",
     replay: "full",
     mcpConfig: "basic",
+  },
+  devin: {
+    sessionModelSwitch: "unsupported",
+    supportsUserInput: false,
+    supportsRollback: false,
+    supportsFileChangeApproval: false,
+    resume: "basic",
+    subagents: "none",
+    attachments: "basic",
+    replay: "basic",
+    mcpConfig: "none",
   },
 };
 

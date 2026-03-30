@@ -194,6 +194,8 @@ function getAdapterPath(
     case "cursor":
     case "opencode":
       return "harness";
+    case "devin":
+      return "direct";
     case "claudeAgent":
       return "direct";
     case "codex":

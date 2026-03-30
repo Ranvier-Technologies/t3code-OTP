@@ -58,6 +58,7 @@ describe("resolveModelSlug", () => {
     expect(resolveModelSlugForProvider("claudeAgent", undefined)).toBe(
       DEFAULT_MODEL_BY_PROVIDER.claudeAgent,
     );
+    expect(resolveModelSlugForProvider("devin", undefined)).toBe(DEFAULT_MODEL_BY_PROVIDER.devin);
   });
 
   it("preserves normalized unknown models", () => {
@@ -70,10 +71,12 @@ describe("resolveSelectableModel", () => {
     const options = [
       { slug: "gpt-5.3-codex", name: "GPT-5.3 Codex" },
       { slug: "claude-sonnet-4-6", name: "Claude Sonnet 4.6" },
+      { slug: "devin-default", name: "Devin Default" },
     ];
     expect(resolveSelectableModel("codex", "gpt-5.3-codex", options)).toBe("gpt-5.3-codex");
     expect(resolveSelectableModel("codex", "gpt-5.3 codex", options)).toBe("gpt-5.3-codex");
     expect(resolveSelectableModel("claudeAgent", "sonnet", options)).toBe("claude-sonnet-4-6");
+    expect(resolveSelectableModel("devin", "Devin Default", options)).toBe("devin-default");
   });
 });
 

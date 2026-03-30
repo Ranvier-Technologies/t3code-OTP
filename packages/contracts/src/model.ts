@@ -27,11 +27,15 @@ export type CursorModelOptions = typeof CursorModelOptions.Type;
 export const OpenCodeModelOptions = Schema.Struct({});
 export type OpenCodeModelOptions = typeof OpenCodeModelOptions.Type;
 
+export const DevinModelOptions = Schema.Struct({});
+export type DevinModelOptions = typeof DevinModelOptions.Type;
+
 export const ProviderModelOptions = Schema.Struct({
   codex: Schema.optional(CodexModelOptions),
   claudeAgent: Schema.optional(ClaudeModelOptions),
   cursor: Schema.optional(CursorModelOptions),
   opencode: Schema.optional(OpenCodeModelOptions),
+  devin: Schema.optional(DevinModelOptions),
 });
 export type ProviderModelOptions = typeof ProviderModelOptions.Type;
 
@@ -57,6 +61,7 @@ export const DEFAULT_MODEL_BY_PROVIDER: Record<ProviderKind, ModelSlug> = {
   claudeAgent: "claude-sonnet-4-6",
   cursor: "composer-2",
   opencode: "opencode/big-pickle",
+  devin: "devin-default",
 };
 
 export const DEFAULT_MODEL = DEFAULT_MODEL_BY_PROVIDER.codex;
@@ -67,6 +72,7 @@ export const DEFAULT_GIT_TEXT_GENERATION_MODEL_BY_PROVIDER: Record<ProviderKind,
   claudeAgent: "claude-haiku-4-5",
   cursor: DEFAULT_MODEL_BY_PROVIDER.cursor,
   opencode: "opencode/gpt-5-nano",
+  devin: DEFAULT_MODEL_BY_PROVIDER.devin,
 };
 
 export const MODEL_SLUG_ALIASES_BY_PROVIDER: Record<ProviderKind, Record<string, ModelSlug>> = {
@@ -93,6 +99,7 @@ export const MODEL_SLUG_ALIASES_BY_PROVIDER: Record<ProviderKind, Record<string,
   },
   cursor: {},
   opencode: {},
+  devin: {},
 };
 
 // ── Provider display names ────────────────────────────────────────────
@@ -102,4 +109,5 @@ export const PROVIDER_DISPLAY_NAMES: Record<ProviderKind, string> = {
   claudeAgent: "Claude",
   cursor: "Cursor",
   opencode: "OpenCode",
+  devin: "Devin",
 };
