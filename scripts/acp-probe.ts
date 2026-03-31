@@ -375,9 +375,10 @@ async function handleCommand(
           return;
         }
         try {
-          const result = await sendRequest(proc, "session/set_mode", {
+          const result = await sendRequest(proc, "session/set_config_option", {
             sessionId: sessionId!,
-            modeId: arg,
+            configId: "mode",
+            value: arg,
           });
           console.log(`Mode set. ${JSON.stringify(result)}`);
         } catch (e) {
@@ -470,7 +471,9 @@ async function handleCommand(
       case "/quit":
       case "/q":
         console.log("Bye.");
-        process.exit(0);
+        proc.kill();
+        rl.close();
+        return;
 
       default:
         console.log(`Unknown command: ${cmd}. Type /help for help.`);

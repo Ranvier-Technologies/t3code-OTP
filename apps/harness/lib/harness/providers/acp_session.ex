@@ -410,7 +410,7 @@ defmodule Harness.Providers.AcpSession do
       status: state.status,
       current_turn_id: state.current_turn_id,
       pending_count: map_size(state.pending),
-      tool_item_count: MapSet.size(state.tool_items),
+      tool_item_count: map_size(state.tool_items),
       ready: ready?(state)
     }
 
@@ -520,8 +520,14 @@ defmodule Harness.Providers.AcpSession do
       {%{from: from, timer: timer, method: "session/set_config_option"}, pending} ->
         if timer, do: Process.cancel_timer(timer)
         config_options = Map.get(result, "configOptions", state.config_options)
+        updated_state = %{state | pending: pending, config_options: config_options}
+
+        emit_event(updated_state, :session, "session/configured", %{
+          "configOptions" => config_options
+        })
+
         if from, do: GenServer.reply(from, {:ok, %{"configOptions" => config_options}})
-        {:continue, %{state | pending: pending, config_options: config_options}}
+        {:continue, updated_state}
 
       {%{from: from, timer: timer}, pending} ->
         if timer, do: Process.cancel_timer(timer)
@@ -644,22 +650,15 @@ defmodule Harness.Providers.AcpSession do
   end
 
   defp handle_rpc_request(state, id, "cursor/create_plan", params) do
-    request_id = Map.get(params, "toolCallId", "rpc-#{id}")
-
-    emit_event(state, :request, "turn/plan/created", %{
-      "requestId" => request_id,
+    emit_event(state, :notification, "turn/plan/created", %{
       "name" => Map.get(params, "name"),
       "overview" => Map.get(params, "overview"),
-      "plan" => Map.get(params, "todos", []),
-      "args" => params
+      "plan" => Map.get(params, "todos", [])
     })
 
-    put_provider_pending(
-      state,
-      id,
-      "cursor/create_plan",
-      Map.put(params, "requestId", request_id)
-    )
+    # Acknowledge immediately — plan creation is fire-and-forget
+    send_to_port(state, JsonRpc.encode_response(id, %{}))
+    state
   end
 
   defp handle_rpc_request(state, id, "fs/" <> _suffix, _params) do
@@ -1165,7 +1164,8 @@ defmodule Harness.Providers.AcpSession do
 
   defp reject_all_pending(state, _reason) do
     Enum.each(state.pending, fn
-      {_id, %{kind: :provider_request, method: "session/elicitation", params: params}} ->
+      {_id, %{kind: :provider_request, method: method, params: params}}
+      when method in ["session/elicitation", "cursor/ask_question"] ->
         emit_event(state, :notification, "user-input/resolved", %{
           "requestId" => Map.get(params, "requestId", "unknown"),
           "answers" => %{}

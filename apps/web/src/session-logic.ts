@@ -192,12 +192,15 @@ export function deriveProviderCommands(
       const payload = activity.payload as Record<string, unknown> | null;
       const commands = payload?.commands;
       if (Array.isArray(commands)) {
-        return commands.filter(
-          (c): c is ProviderCommand =>
-            typeof c === "object" &&
-            c !== null &&
-            typeof (c as Record<string, unknown>).name === "string",
-        );
+        return commands.filter((c): c is ProviderCommand => {
+          if (typeof c !== "object" || c === null) return false;
+          const r = c as Record<string, unknown>;
+          return (
+            typeof r.name === "string" &&
+            typeof r.description === "string" &&
+            typeof r.type === "string"
+          );
+        });
       }
     }
   }

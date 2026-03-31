@@ -22,7 +22,7 @@ defmodule Harness.Dev.Explain do
       |----------|-----------|-----------|--------|------------|
       | Codex | stdio JSON-RPC 2.0 (Erlang Port) | Long-lived process, multiple turns | `codex app-server` | API key or ChatGPT account |
       | Claude | stdout stream-json (Erlang Port) | New process per turn | `claude --output-format=stream-json` | API key (via claude binary) |
-      | Cursor | stdout stream-json (Erlang Port) | New process per turn | `cursor agent --print --output-format stream-json` | Cursor account (via binary) |
+      | Cursor | Bidirectional stdio JSON-RPC 2.0 (Erlang Port, ACP) | Long-lived (one process per thread) | `cursor agent acp` | Cursor account (via binary) |
       | OpenCode | HTTP REST + SSE | Long-lived HTTP server | `opencode serve --port PORT` | Configurable per-provider |
 
       **Key differences:**
