@@ -10,8 +10,7 @@ packages/*/dist
 .env
 .env.local
 opencode.jsonc
-ai_docs/plans/
-ai_docs/dev_templates/
+ai_docs/
 build/
 .logs/
 release/
