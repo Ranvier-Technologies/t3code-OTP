@@ -69,7 +69,6 @@ function createBaseServerConfig(): ServerConfig {
           enabled: true,
           orgId: "",
           baseUrl: "https://api.devin.ai",
-          customModels: [],
         },
       },
     },

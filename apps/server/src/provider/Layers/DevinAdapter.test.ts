@@ -117,7 +117,6 @@ function makeHarness() {
         enabled: true,
         orgId: "org-123",
         baseUrl: "https://api.example.test",
-        customModels: [],
       },
     },
   });

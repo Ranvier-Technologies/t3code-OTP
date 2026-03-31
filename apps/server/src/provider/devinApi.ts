@@ -232,7 +232,10 @@ function mapMessageInput(input: DevinSendMessageInput): Record<string, unknown> 
 
 export function createDevinApiClient(options: DevinApiClientOptions): DevinApiClient {
   const baseUrl = trimString(options.baseUrl) ?? DEFAULT_DEVIN_BASE_URL;
-  const apiKey = options.apiKey.trim();
+  const apiKey = trimString(options.apiKey);
+  if (!apiKey) {
+    throw new Error("Devin API key must be a non-empty string.");
+  }
   const fetchImpl = options.fetch ?? globalThis.fetch;
 
   const request = <T>(input: {

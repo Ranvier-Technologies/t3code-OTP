@@ -29,6 +29,7 @@ import type { ProviderThreadSnapshot } from "../Services/ProviderAdapter";
 const PROVIDER = "devin" as const;
 const PAGE_SIZE = 100;
 const MAX_PAGES_PER_POLL = 5;
+const MAX_SEEN_MESSAGE_EVENT_IDS = 256;
 
 type DevinResumeCursor = {
   readonly orgId: string;
@@ -56,7 +57,7 @@ interface DevinSessionContext {
   pollFiber: Fiber.Fiber<void, unknown> | null;
   lastMessageCursor: string | null;
   lastMessageEventId: string | null;
-  seenMessageEventIds: Set<string>;
+  seenMessageEventIds: RecentEventIdCache;
   lastRemoteStatus: string | null;
   lastRemoteStatusDetail: string | null;
   stopped: boolean;
@@ -93,6 +94,31 @@ function trimOrNull(value: unknown): string | null {
   }
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+class RecentEventIdCache {
+  private readonly seen = new Set<string>();
+  private readonly order: string[] = [];
+
+  constructor(private readonly capacity: number) {}
+
+  has(value: string): boolean {
+    return this.seen.has(value);
+  }
+
+  add(value: string): void {
+    if (this.seen.has(value)) {
+      return;
+    }
+    this.seen.add(value);
+    this.order.push(value);
+    if (this.order.length > this.capacity) {
+      const evicted = this.order.shift();
+      if (evicted) {
+        this.seen.delete(evicted);
+      }
+    }
+  }
 }
 
 function parseResumeCursor(value: unknown): DevinResumeCursor | null {
@@ -253,11 +279,17 @@ export const DevinAdapterLive = Layer.effect(
     > =>
       serverSettings.getSettings.pipe(
         Effect.mapError((error) => toValidationError("DevinAdapter.config", error.message, error)),
-        Effect.map((settings) => settings.providers.devin),
         Effect.flatMap((settings) => {
+          const providerSettings = settings.providers?.devin;
+          if (!providerSettings) {
+            return Effect.fail(
+              toValidationError("DevinAdapter.config", "Devin provider settings are missing."),
+            );
+          }
+          const orgId = trimOrNull(providerSettings.orgId);
           const apiKey =
-            process.env.T3CODE_DEVIN_API_KEY?.trim() ?? process.env.DEVIN_API_KEY?.trim();
-          if (!settings.orgId.trim()) {
+            trimOrNull(process.env.T3CODE_DEVIN_API_KEY) ?? trimOrNull(process.env.DEVIN_API_KEY);
+          if (!orgId) {
             return Effect.fail(
               toValidationError("DevinAdapter.config", "Devin org ID is not configured."),
             );
@@ -272,10 +304,10 @@ export const DevinAdapterLive = Layer.effect(
           }
           return Effect.succeed({
             client: createDevinApiClient({
-              baseUrl: settings.baseUrl,
+              baseUrl: providerSettings.baseUrl,
               apiKey,
             }),
-            orgId: settings.orgId.trim(),
+            orgId,
           });
         }),
       );
@@ -651,9 +683,13 @@ export const DevinAdapterLive = Layer.effect(
             pollFiber: null,
             lastMessageCursor: resumeCursor.lastMessageCursor ?? null,
             lastMessageEventId: resumeCursor.lastMessageEventId ?? null,
-            seenMessageEventIds: resumeCursor.lastMessageEventId
-              ? new Set([resumeCursor.lastMessageEventId])
-              : new Set(),
+            seenMessageEventIds: (() => {
+              const cache = new RecentEventIdCache(MAX_SEEN_MESSAGE_EVENT_IDS);
+              if (resumeCursor.lastMessageEventId) {
+                cache.add(resumeCursor.lastMessageEventId);
+              }
+              return cache;
+            })(),
             lastRemoteStatus: null,
             lastRemoteStatusDetail: null,
             stopped: false,

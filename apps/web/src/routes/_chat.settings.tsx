@@ -22,6 +22,8 @@ import { useSettings, useUpdateSettings } from "../hooks/useSettings";
 import {
   getCustomModelOptionsByProvider,
   MAX_CUSTOM_MODEL_LENGTH,
+  makeModelSelection,
+  PROVIDER_CUSTOM_MODEL_CONFIG,
   resolveAppModelSelectionState,
 } from "../modelSelection";
 import { APP_VERSION } from "../branding";
@@ -87,10 +89,6 @@ type InstallProviderSettings = {
   homePathKey?: "codexHomePath";
   homePlaceholder?: string;
   homeDescription?: ReactNode;
-  /** Short description shown when the provider has no live status from the Node server. */
-  harnessDescription?: string;
-  supportsCustomModels?: boolean;
-  customModelPlaceholder?: string;
 };
 
 const PROVIDER_SETTINGS: readonly InstallProviderSettings[] = [
@@ -102,36 +100,24 @@ const PROVIDER_SETTINGS: readonly InstallProviderSettings[] = [
     homePathKey: "codexHomePath",
     homePlaceholder: "CODEX_HOME",
     homeDescription: "Optional custom Codex home and config directory.",
-    supportsCustomModels: true,
-    customModelPlaceholder: "gpt-6.7-codex-ultra-preview",
   },
   {
     provider: "claudeAgent",
     title: "Claude",
     binaryPlaceholder: "Claude binary path",
     binaryDescription: "Path to the Claude binary",
-    supportsCustomModels: true,
-    customModelPlaceholder: "claude-sonnet-5-0",
   },
   {
     provider: "cursor",
     title: "Cursor",
-    harnessDescription: "Routed via Elixir harness",
-    supportsCustomModels: true,
-    customModelPlaceholder: "claude-4.6-sonnet-medium",
   },
   {
     provider: "opencode",
     title: "OpenCode",
-    harnessDescription: "Routed via Elixir harness",
-    supportsCustomModels: true,
-    customModelPlaceholder: "claude-sonnet-4-6",
   },
   {
     provider: "devin",
     title: "Devin",
-    harnessDescription: "Exposed by the server runtime as a single built-in model.",
-    supportsCustomModels: false,
   },
 ];
 
@@ -337,7 +323,7 @@ function SettingsRouteView() {
     ),
     cursor: Boolean(settings.providers.cursor.customModels.length > 0),
     opencode: Boolean(settings.providers.opencode.customModels.length > 0),
-    devin: Boolean(settings.providers.devin.customModels.length > 0),
+    devin: false,
   });
   const [customModelInputByProvider, setCustomModelInputByProvider] = useState<
     Record<ProviderKind, string>
@@ -355,6 +341,21 @@ function SettingsRouteView() {
   const refreshingRef = useRef(false);
   const queryClient = useQueryClient();
   useRelativeTimeTick();
+
+  const getCustomModels = useCallback(
+    (provider: ProviderKind): ReadonlyArray<string> => {
+      switch (provider) {
+        case "codex":
+        case "claudeAgent":
+        case "cursor":
+        case "opencode":
+          return settings.providers[provider].customModels;
+        case "devin":
+          return [];
+      }
+    },
+    [settings.providers],
+  );
 
   const refreshProviders = useCallback(() => {
     if (refreshingRef.current) return;
@@ -447,7 +448,7 @@ function SettingsRouteView() {
   const addCustomModel = useCallback(
     (provider: ProviderKind) => {
       const customModelInput = customModelInputByProvider[provider];
-      const customModels = settings.providers[provider].customModels;
+      const customModels = getCustomModels(provider);
       const normalized = normalizeModelSlug(customModelInput, provider);
       if (!normalized) {
         setCustomModelErrorByProvider((existing) => ({
@@ -515,12 +516,12 @@ function SettingsRouteView() {
         setTimeout(() => observer.disconnect(), 2000);
       }
     },
-    [customModelInputByProvider, serverProviders, settings, updateSettings],
+    [customModelInputByProvider, getCustomModels, serverProviders, settings, updateSettings],
   );
 
   const removeCustomModel = useCallback(
     (provider: ProviderKind, slug: string) => {
-      const customModels = settings.providers[provider].customModels;
+      const customModels = getCustomModels(provider);
       updateSettings({
         providers: {
           ...settings.providers,
@@ -535,7 +536,7 @@ function SettingsRouteView() {
         [provider]: null,
       }));
     },
-    [settings, updateSettings],
+    [getCustomModels, settings, updateSettings],
   );
 
   const providerCards = PROVIDER_SETTINGS.map((providerSettings) => {
@@ -544,7 +545,8 @@ function SettingsRouteView() {
     );
     const providerConfig = settings.providers[providerSettings.provider];
     const defaultProviderConfig = DEFAULT_UNIFIED_SETTINGS.providers[providerSettings.provider];
-    const isHarnessProvider = Boolean(providerSettings.harnessDescription);
+    const sharedProviderConfig = PROVIDER_CUSTOM_MODEL_CONFIG[providerSettings.provider];
+    const isHarnessProvider = Boolean(sharedProviderConfig.harnessDescription);
     const statusKey =
       liveProvider?.status ??
       (providerConfig.enabled ? (isHarnessProvider ? "checking" : "warning") : "disabled");
@@ -555,15 +557,15 @@ function SettingsRouteView() {
       isHarnessProvider && !liveProvider
         ? {
             headline: "Checking provider…",
-            detail: providerSettings.harnessDescription!,
+            detail: sharedProviderConfig.harnessDescription!,
           }
         : getProviderSummary(liveProvider);
     const models: ReadonlyArray<ServerProviderModel> =
       liveProvider && liveProvider.models.length > 0
         ? liveProvider.models
-        : providerSettings.supportsCustomModels === false
+        : sharedProviderConfig.supportsCustomModels === false
           ? getProviderModels(serverProviders, providerSettings.provider)
-          : providerConfig.customModels.map((slug) => ({
+          : getCustomModels(providerSettings.provider).map((slug) => ({
               slug,
               name: slug,
               isCustom: true,
@@ -591,8 +593,8 @@ function SettingsRouteView() {
       statusStyle,
       summary,
       versionLabel: getProviderVersionLabel(liveProvider?.version),
-      supportsCustomModels: providerSettings.supportsCustomModels ?? true,
-      customModelPlaceholder: providerSettings.customModelPlaceholder,
+      supportsCustomModels: sharedProviderConfig.supportsCustomModels,
+      customModelPlaceholder: sharedProviderConfig.placeholder,
     };
   });
 
@@ -908,7 +910,7 @@ function SettingsRouteView() {
                           textGenerationModelSelection: resolveAppModelSelectionState(
                             {
                               ...settings,
-                              textGenerationModelSelection: { provider, model },
+                              textGenerationModelSelection: makeModelSelection(provider, model),
                             },
                             serverProviders,
                           ),
@@ -933,11 +935,11 @@ function SettingsRouteView() {
                           textGenerationModelSelection: resolveAppModelSelectionState(
                             {
                               ...settings,
-                              textGenerationModelSelection: {
-                                provider: textGenProvider,
-                                model: textGenModel,
-                                ...(nextOptions ? { options: nextOptions } : {}),
-                              },
+                              textGenerationModelSelection: makeModelSelection(
+                                textGenProvider,
+                                textGenModel,
+                                nextOptions,
+                              ),
                             },
                             serverProviders,
                           ),

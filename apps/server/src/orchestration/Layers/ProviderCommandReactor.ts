@@ -55,6 +55,32 @@ function toNonEmptyProviderInput(value: string | undefined): string | undefined 
   return normalized && normalized.length > 0 ? normalized : undefined;
 }
 
+function setModelSelectionModel(
+  selection: ModelSelection,
+  model: string,
+): ModelSelection {
+  switch (selection.provider) {
+    case "codex":
+      return {
+        provider: "codex",
+        model,
+        ...("options" in selection && selection.options ? { options: selection.options } : {}),
+      };
+    case "claudeAgent":
+      return {
+        provider: "claudeAgent",
+        model,
+        ...("options" in selection && selection.options ? { options: selection.options } : {}),
+      };
+    case "cursor":
+      return { provider: "cursor", model };
+    case "opencode":
+      return { provider: "opencode", model };
+    case "devin":
+      return { provider: "devin", model: "devin-default" };
+  }
+}
+
 function mapProviderSessionStatusToOrchestrationStatus(
   status: "connecting" | "ready" | "running" | "error" | "closed",
 ): OrchestrationSession["status"] {
@@ -416,10 +442,7 @@ const make = Effect.gen(function* () {
     const modelForTurn =
       sessionModelSwitch === "unsupported"
         ? activeSession?.model !== undefined
-          ? {
-              ...requestedModelSelection,
-              model: activeSession.model,
-            }
+          ? setModelSelectionModel(requestedModelSelection, activeSession.model)
           : requestedModelSelection
         : input.modelSelection;
 

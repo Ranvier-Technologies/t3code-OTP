@@ -78,7 +78,7 @@ export type OpenCodeModelSelection = typeof OpenCodeModelSelection.Type;
 
 export const DevinModelSelection = Schema.Struct({
   provider: Schema.Literal("devin"),
-  model: TrimmedNonEmptyString,
+  model: Schema.Literal("devin-default"),
 });
 export type DevinModelSelection = typeof DevinModelSelection.Type;
 

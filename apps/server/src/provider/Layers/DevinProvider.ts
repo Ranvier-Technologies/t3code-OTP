@@ -5,7 +5,7 @@ import { ServerSettingsService } from "../../serverSettings";
 import { createDevinApiClient, DevinApiError } from "../devinApi";
 import { makeManagedServerProvider } from "../makeManagedServerProvider";
 import { DEVIN_PROVIDER_CAPABILITIES } from "../providerCapabilities";
-import { buildServerProvider, providerModelsFromSettings } from "../providerSnapshot";
+import { buildServerProvider } from "../providerSnapshot";
 import { DevinProvider } from "../Services/DevinProvider";
 
 const DEVIN_PROVIDER = "devin" as unknown as ProviderKind;
@@ -24,7 +24,6 @@ interface DevinProviderSettings {
   readonly baseUrl: string;
   readonly apiKey: string | undefined;
   readonly orgId: string | undefined;
-  readonly customModels: ReadonlyArray<string>;
 }
 
 interface DevinServerSettingsLike {
@@ -60,22 +59,6 @@ function readBoolean(value: unknown): boolean | undefined {
     default:
       return undefined;
   }
-}
-
-function readStringArray(value: unknown): ReadonlyArray<string> {
-  if (Array.isArray(value)) {
-    return value.flatMap((entry) => {
-      const trimmed = nonEmptyTrimmed(entry);
-      return trimmed ? [trimmed] : [];
-    });
-  }
-  if (typeof value === "string") {
-    return value
-      .split(",")
-      .map((entry) => entry.trim())
-      .filter((entry) => entry.length > 0);
-  }
-  return [];
 }
 
 function readProviderSettings(settings: DevinServerSettingsLike): Record<string, unknown> {
@@ -117,30 +100,21 @@ export function resolveDevinProviderSettings(
     readEnvValue(env, "T3CODE_DEVIN_BASE_URL", "DEVIN_BASE_URL") ??
     nonEmptyTrimmed(providerSettings.baseUrl) ??
     DEFAULT_DEVIN_BASE_URL;
-  const customModels = [
-    ...readStringArray(providerSettings.customModels),
-    ...readStringArray(readEnvValue(env, "T3CODE_DEVIN_CUSTOM_MODELS", "DEVIN_CUSTOM_MODELS")),
-  ];
   const enabled =
     readBoolean(readEnvValue(env, "T3CODE_DEVIN_ENABLED", "DEVIN_ENABLED")) ??
     readBoolean(providerSettings.enabled) ??
-    Boolean(apiKey || orgId || customModels.length > 0);
+    Boolean(apiKey || orgId);
 
   return {
     enabled,
     baseUrl,
     apiKey,
     orgId,
-    customModels,
   };
 }
 
-function buildDevinModels(customModels: ReadonlyArray<string>): ReadonlyArray<ServerProviderModel> {
-  return providerModelsFromSettings(
-    BUILT_IN_MODELS,
-    DEVIN_PROVIDER as ServerProvider["provider"],
-    customModels,
-  );
+function buildDevinModels(): ReadonlyArray<ServerProviderModel> {
+  return BUILT_IN_MODELS;
 }
 
 export const checkDevinProviderStatus = (options?: {
@@ -152,7 +126,7 @@ export const checkDevinProviderStatus = (options?: {
     const settings = yield* settingsService.getSettings;
     const providerSettings = resolveDevinProviderSettings(settings, options?.env);
     const checkedAt = new Date().toISOString();
-    const models = buildDevinModels(providerSettings.customModels);
+    const models = buildDevinModels();
 
     const buildSnapshot = (probe: Parameters<typeof buildServerProvider>[0]["probe"]) =>
       buildServerProvider({

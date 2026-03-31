@@ -12,14 +12,12 @@ describe("ServerSettings", () => {
       enabled: true,
       orgId: "",
       baseUrl: "https://api.devin.ai",
-      customModels: [],
     });
 
     expect(decodeServerSettings({}).providers.devin).toEqual({
       enabled: true,
       orgId: "",
       baseUrl: "https://api.devin.ai",
-      customModels: [],
     });
   });
 });
@@ -36,7 +34,6 @@ describe("ServerSettingsPatch", () => {
           enabled: false,
           orgId: "org_123",
           baseUrl: "https://example.devin.local",
-          customModels: [],
         },
       },
     });
@@ -49,7 +46,6 @@ describe("ServerSettingsPatch", () => {
       enabled: false,
       orgId: "org_123",
       baseUrl: "https://example.devin.local",
-      customModels: [],
     });
   });
 });

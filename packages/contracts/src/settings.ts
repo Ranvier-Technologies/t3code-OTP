@@ -81,7 +81,6 @@ export const DevinSettings = Schema.Struct({
   enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(() => true)),
   orgId: TrimmedString.pipe(Schema.withDecodingDefault(() => "")),
   baseUrl: TrimmedString.pipe(Schema.withDecodingDefault(() => "https://api.devin.ai")),
-  customModels: Schema.Array(Schema.String).pipe(Schema.withDecodingDefault(() => [])),
 });
 export type DevinSettings = typeof DevinSettings.Type;
 
@@ -152,7 +151,7 @@ const ModelSelectionPatch = Schema.Union([
   }),
   Schema.Struct({
     provider: Schema.optionalKey(Schema.Literal("devin")),
-    model: Schema.optionalKey(TrimmedNonEmptyString),
+    model: Schema.optionalKey(Schema.Literal("devin-default")),
   }),
 ]);
 
@@ -178,7 +177,6 @@ const DevinSettingsPatch = Schema.Struct({
   enabled: Schema.optionalKey(Schema.Boolean),
   orgId: Schema.optionalKey(Schema.String),
   baseUrl: Schema.optionalKey(Schema.String),
-  customModels: Schema.optionalKey(Schema.Array(Schema.String)),
 });
 
 export const ServerSettingsPatch = Schema.Struct({

@@ -49,7 +49,6 @@ describe("DevinProvider", () => {
           T3CODE_DEVIN_ENABLED: "true",
           T3CODE_DEVIN_API_KEY: "cog_test",
           T3CODE_DEVIN_ORG_ID: "org-123",
-          T3CODE_DEVIN_CUSTOM_MODELS: "devin-pro, devin-fast",
         },
       );
 
@@ -58,7 +57,6 @@ describe("DevinProvider", () => {
         baseUrl: "https://api.devin.ai",
         apiKey: "cog_test",
         orgId: "org-123",
-        customModels: ["devin-pro", "devin-fast"],
       });
     }),
   );

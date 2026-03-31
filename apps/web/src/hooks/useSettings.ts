@@ -153,11 +153,7 @@ export function buildLegacyServerSettingsMigrationPatch(legacySettings: Record<s
   }
 
   if (Schema.is(ModelSelection)(legacySettings.textGenerationModelSelection)) {
-    const sel = legacySettings.textGenerationModelSelection;
-    // ServerSettingsPatch accepts provider-specific text generation selections
-    if (sel.provider === "codex" || sel.provider === "claudeAgent" || sel.provider === "devin") {
-      patch.textGenerationModelSelection = sel;
-    }
+    patch.textGenerationModelSelection = legacySettings.textGenerationModelSelection;
   }
 
   if (typeof legacySettings.codexBinaryPath === "string") {

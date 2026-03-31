@@ -9,6 +9,7 @@ import { resolveModelSlugForProvider } from "@t3tools/shared/model";
 import { create } from "zustand";
 import { type ChatMessage, type Project, type Thread } from "./types";
 import { Debouncer } from "@tanstack/react-pacer";
+import { makeModelSelection } from "./modelSelection";
 
 // ── State ────────────────────────────────────────────────────────────
 
@@ -135,13 +136,16 @@ function mapProjectsFromReadModel(
       defaultModelSelection:
         existing?.defaultModelSelection ??
         (project.defaultModelSelection
-          ? {
-              ...project.defaultModelSelection,
-              model: resolveModelSlugForProvider(
+          ? makeModelSelection(
+              project.defaultModelSelection.provider,
+              resolveModelSlugForProvider(
                 project.defaultModelSelection.provider,
                 project.defaultModelSelection.model,
               ),
-            }
+              "options" in project.defaultModelSelection
+                ? project.defaultModelSelection.options
+                : undefined,
+            )
           : null),
       expanded:
         existing?.expanded ??
@@ -254,13 +258,11 @@ export function syncServerReadModel(state: AppState, readModel: OrchestrationRea
         codexThreadId: null,
         projectId: thread.projectId,
         title: thread.title,
-        modelSelection: {
-          ...thread.modelSelection,
-          model: resolveModelSlugForProvider(
-            thread.modelSelection.provider,
-            thread.modelSelection.model,
-          ),
-        },
+        modelSelection: makeModelSelection(
+          thread.modelSelection.provider,
+          resolveModelSlugForProvider(thread.modelSelection.provider, thread.modelSelection.model),
+          "options" in thread.modelSelection ? thread.modelSelection.options : undefined,
+        ),
         runtimeMode: thread.runtimeMode,
         interactionMode: thread.interactionMode,
         session: thread.session
