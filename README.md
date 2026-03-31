@@ -80,12 +80,12 @@ pixi run credo                       # Elixir linter
 
 All 4 providers verified E2E in browser with real prompts and real tool execution:
 
-| Provider | Runtime | Transport                         | Tool Use                                 |
-| -------- | ------- | --------------------------------- | ---------------------------------------- |
-| Claude   | Node    | Agent SDK (direct)                | file write via `bypassPermissions`       |
-| Codex    | Elixir  | stdio JSON-RPC via Erlang Port    | `commandExecution` — file created        |
-| Cursor   | Elixir  | ACP JSON-RPC 2.0 via Erlang Port  | file read/write via permission flow      |
-| OpenCode | Elixir  | HTTP + SSE via raw TCP + Req      | `file_change write` via permission reply |
+| Provider | Runtime | Transport                        | Tool Use                                 |
+| -------- | ------- | -------------------------------- | ---------------------------------------- |
+| Claude   | Node    | Agent SDK (direct)               | file write via `bypassPermissions`       |
+| Codex    | Elixir  | stdio JSON-RPC via Erlang Port   | `commandExecution` — file created        |
+| Cursor   | Elixir  | ACP JSON-RPC 2.0 via Erlang Port | file read/write via permission flow      |
+| OpenCode | Elixir  | HTTP + SSE via raw TCP + Req     | `file_change write` via permission reply |
 
 Full feature matrix including session lifecycle, approval requests, streaming tool output, and thread persistence: see the [companion writeup](https://ranvier-technologies.github.io/t3code-OTP/).
 
@@ -158,12 +158,12 @@ python3 output/stress-test/viz-real.py
 
 ### Node integration
 
-| File                      | Role                                                        |
-| ------------------------- | ----------------------------------------------------------- |
-| `HarnessClientAdapter.ts` | Single adapter: all 13 `ProviderAdapterShape` methods       |
+| File                      | Role                                                          |
+| ------------------------- | ------------------------------------------------------------- |
+| `HarnessClientAdapter.ts` | Single adapter: all 13 `ProviderAdapterShape` methods         |
 | `HarnessClientManager.ts` | Phoenix Channel WS client with reconnection + envelope unwrap |
-| `codexEventMapping.ts`    | Canonical event mapping (shared with existing CodexAdapter) |
-| `ClaudeAdapter.ts`        | Claude Agent SDK adapter (Node-native, not via harness)     |
+| `codexEventMapping.ts`    | Canonical event mapping (shared with existing CodexAdapter)   |
+| `ClaudeAdapter.ts`        | Claude Agent SDK adapter (Node-native, not via harness)       |
 
 ---
 

@@ -126,7 +126,7 @@ import {
   resolveSelectableProvider,
 } from "../providerModels";
 import { useSettings } from "../hooks/useSettings";
-import { resolveAppModelSelection } from "../modelSelection";
+import { makeModelSelection, resolveAppModelSelection } from "../modelSelection";
 import { isTerminalFocused } from "../lib/terminalFocus";
 import {
   type ComposerImageAttachment,
@@ -641,11 +641,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const selectedPromptEffort = composerProviderState.promptEffort;
   const selectedModelOptionsForDispatch = composerProviderState.modelOptionsForDispatch;
   const selectedModelSelection = useMemo<ModelSelection>(
-    () => ({
-      provider: selectedProvider,
-      model: selectedModel,
-      ...(selectedModelOptionsForDispatch ? { options: selectedModelOptionsForDispatch } : {}),
-    }),
+    () => makeModelSelection(selectedProvider, selectedModel, selectedModelOptionsForDispatch),
     [selectedModel, selectedModelOptionsForDispatch, selectedProvider],
   );
   const selectedModelForPicker = selectedModel;
@@ -1023,9 +1019,11 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const keybindings = serverConfigQuery.data?.keybindings ?? EMPTY_KEYBINDINGS;
   const availableEditors = serverConfigQuery.data?.availableEditors ?? EMPTY_AVAILABLE_EDITORS;
   const modelOptionsByProvider = useMemo(() => {
-    const discovered = (p: ProviderKind) =>
-      providerStatuses.find((s) => s.provider === p)?.models ?? [];
+    const discovered = (p: ProviderKind) => getProviderModels(providerStatuses, p);
     const custom = (p: ProviderKind) => {
+      if (p === "devin") {
+        return [];
+      }
       const slugs = settings.providers[p]?.customModels ?? [];
       const seen = new Set(discovered(p).map((m) => m.slug));
       return slugs
@@ -1037,6 +1035,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
       claudeAgent: [...discovered("claudeAgent"), ...custom("claudeAgent")],
       cursor: [...discovered("cursor"), ...custom("cursor")],
       opencode: [...discovered("opencode"), ...custom("opencode")],
+      devin: [...discovered("devin"), ...custom("devin")],
     };
   }, [providerStatuses, settings]);
   const selectedModelForPickerWithCustomFallback = useMemo(() => {
@@ -2608,16 +2607,13 @@ export default function ChatView({ threadId }: ChatViewProps) {
         }
       }
       const title = truncateTitle(titleSeed);
-      const threadCreateModelSelection: ModelSelection = {
-        provider: selectedProvider,
-        model:
-          selectedModel ||
+      const threadCreateModelSelection: ModelSelection = makeModelSelection(
+        selectedProvider,
+        selectedModel ||
           activeProject.defaultModelSelection?.model ||
           DEFAULT_MODEL_BY_PROVIDER.codex,
-        ...("options" in selectedModelSelection && selectedModelSelection.options
-          ? { options: selectedModelSelection.options }
-          : {}),
-      };
+        "options" in selectedModelSelection ? selectedModelSelection.options : undefined,
+      );
 
       if (isLocalDraftThread) {
         await api.orchestration.dispatchCommand({
@@ -3160,10 +3156,10 @@ export default function ChatView({ threadId }: ChatViewProps) {
         providerStatuses,
         model,
       );
-      const nextModelSelection: ModelSelection = {
-        provider: resolvedProvider,
-        model: resolvedModel,
-      };
+      const nextModelSelection: ModelSelection = makeModelSelection(
+        resolvedProvider,
+        resolvedModel,
+      );
       setComposerDraftModelSelection(activeThread.id, nextModelSelection);
       setStickyComposerModelSelection(nextModelSelection);
       scheduleComposerFocus();

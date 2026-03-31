@@ -67,6 +67,15 @@ const CLAUDE_MODELS: ReadonlyArray<ServerProviderModel> = [
   },
 ];
 
+const DEVIN_MODELS: ReadonlyArray<ServerProviderModel> = [
+  {
+    slug: "devin-default",
+    name: "Devin Default",
+    isCustom: false,
+    capabilities: null,
+  },
+];
+
 describe("getComposerProviderState", () => {
   it("returns codex defaults when no codex draft options exist", () => {
     const state = getComposerProviderState({
@@ -254,6 +263,24 @@ describe("getComposerProviderState", () => {
     expect(state).toEqual({
       provider: "claudeAgent",
       promptEffort: "high",
+      modelOptionsForDispatch: undefined,
+    });
+  });
+
+  it("keeps Devin stateless with no dispatch options", () => {
+    const state = getComposerProviderState({
+      provider: "devin",
+      model: "devin-default",
+      models: DEVIN_MODELS,
+      prompt: "",
+      modelOptions: {
+        devin: {},
+      },
+    });
+
+    expect(state).toEqual({
+      provider: "devin",
+      promptEffort: null,
       modelOptionsForDispatch: undefined,
     });
   });

@@ -1,5 +1,6 @@
 import type {
   ProviderCapabilities,
+  ProviderKind,
   ServerProvider,
   ServerProviderAuthStatus,
   ServerProviderModel,
@@ -10,6 +11,7 @@ import { Effect, Stream } from "effect";
 import { normalizeModelSlug } from "@t3tools/shared/model";
 
 export const DEFAULT_TIMEOUT_MS = 4_000;
+const KNOWN_PROVIDER_KINDS = new Set<ProviderKind>(["codex", "claudeAgent", "cursor", "opencode"]);
 
 export interface CommandResult {
   readonly stdout: string;
@@ -88,7 +90,9 @@ export function providerModelsFromSettings(
   const customEntries: ServerProviderModel[] = [];
 
   for (const candidate of customModels) {
-    const normalized = normalizeModelSlug(candidate, provider);
+    const normalized = KNOWN_PROVIDER_KINDS.has(provider as ProviderKind)
+      ? normalizeModelSlug(candidate, provider as ProviderKind)
+      : (nonEmptyTrimmed(candidate) ?? null);
     if (!normalized || seen.has(normalized)) {
       continue;
     }

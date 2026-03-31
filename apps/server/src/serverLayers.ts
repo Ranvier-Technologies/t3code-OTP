@@ -25,6 +25,7 @@ import {
 import type { ProviderAdapterShape } from "./provider/Services/ProviderAdapter";
 import { makeClaudeAdapterLive } from "./provider/Layers/ClaudeAdapter";
 import { makeCodexAdapterLive } from "./provider/Layers/CodexAdapter";
+import { DevinAdapterLive } from "./provider/Layers/DevinAdapter";
 import {
   makeHarnessClientAdapterLive,
   HARNESS_PROVIDER_CAPABILITIES,
@@ -32,6 +33,7 @@ import {
 import { HarnessClientAdapter } from "./provider/Services/HarnessClientAdapter";
 import { ClaudeAdapter } from "./provider/Services/ClaudeAdapter";
 import { CodexAdapter } from "./provider/Services/CodexAdapter";
+import { DevinAdapter } from "./provider/Services/DevinAdapter";
 import { ProviderAdapterRegistryLive } from "./provider/Layers/ProviderAdapterRegistry";
 import { ProviderAdapterRegistry } from "./provider/Services/ProviderAdapterRegistry";
 import { makeProviderServiceLive } from "./provider/Layers/ProviderService";
@@ -76,7 +78,7 @@ const makeRuntimePtyAdapterLayer = () =>
  * Provider layer: Claude always uses the Node SDK adapter (Agent SDK).
  * When the Elixir harness is available (harnessPort configured), Codex,
  * Cursor, and OpenCode are routed through it. Without harness, only
- * Claude and Codex (via Node SDK) are available.
+ * Claude, Codex, and Devin (via direct adapters) are available.
  */
 export function makeServerProviderLayer(options?: {
   harnessAdapterLayer?: ReturnType<typeof makeHarnessClientAdapterLive>;
@@ -109,6 +111,7 @@ export function makeServerProviderLayer(options?: {
     const claudeAdapterLayer = makeClaudeAdapterLive(
       nativeEventLogger ? { nativeEventLogger } : undefined,
     );
+    const devinAdapterLayer = DevinAdapterLive;
 
     // Harness adapters — only when harnessPort is configured
     // Codex, Cursor, and OpenCode route through the Elixir harness.
@@ -135,12 +138,14 @@ export function makeServerProviderLayer(options?: {
           Effect.gen(function* () {
             const claudeAdapter = yield* ClaudeAdapter;
             const codexAdapter = yield* CodexAdapter;
+            const devinAdapter = yield* DevinAdapter;
             const harnessBaseAdapter = yield* HarnessClientAdapter;
 
             type Adapter = ProviderAdapterShape<ProviderAdapterError>;
             const byProvider = new Map<string, Adapter>();
 
             byProvider.set("claudeAgent", claudeAdapter);
+            byProvider.set("devin", devinAdapter);
             if (useLegacyCodex) {
               byProvider.set("codex", codexAdapter);
             }
@@ -171,14 +176,16 @@ export function makeServerProviderLayer(options?: {
         ).pipe(
           Layer.provide(codexAdapterLayer),
           Layer.provide(claudeAdapterLayer),
+          Layer.provide(devinAdapterLayer),
           Layer.provideMerge(harnessAdapterLayer.pipe(Layer.provideMerge(McpConfigServiceLive))),
           Layer.provideMerge(providerSessionDirectoryLayer),
         )
       : useLegacyCodex
-        ? // Path B: legacy codex, no harness — codex + claude only
+        ? // Path B: legacy codex, no harness — codex + claude + devin
           ProviderAdapterRegistryLive.pipe(
             Layer.provide(codexAdapterLayer),
             Layer.provide(claudeAdapterLayer),
+            Layer.provide(devinAdapterLayer),
             Layer.provideMerge(providerSessionDirectoryLayer),
           )
         : // Path C: harness required but not configured — error gracefully
@@ -191,9 +198,11 @@ export function makeServerProviderLayer(options?: {
                   "direct adapter, or configure harnessPort.",
               );
               const claudeAdapter = yield* ClaudeAdapter;
+              const devinAdapter = yield* DevinAdapter;
               type Adapter = ProviderAdapterShape<ProviderAdapterError>;
               const byProvider = new Map<string, Adapter>();
               byProvider.set("claudeAgent", claudeAdapter);
+              byProvider.set("devin", devinAdapter);
 
               return {
                 getByProvider: (provider: ProviderKind) => {
@@ -223,6 +232,7 @@ export function makeServerProviderLayer(options?: {
             }),
           ).pipe(
             Layer.provide(claudeAdapterLayer),
+            Layer.provide(devinAdapterLayer),
             Layer.provideMerge(providerSessionDirectoryLayer),
           );
 

@@ -8,12 +8,15 @@ import { Effect, Equal, Layer, PubSub, Ref, Stream } from "effect";
 
 import { ClaudeProviderLive } from "./ClaudeProvider";
 import { CodexProviderLive } from "./CodexProvider";
+import { DevinProviderLive } from "./DevinProvider";
 import { CursorProviderLive, OpenCodeProviderLive } from "./HarnessProvider";
 import { HARNESS_PROVIDER_CAPABILITIES } from "../providerCapabilities.ts";
 import type { ClaudeProviderShape } from "../Services/ClaudeProvider";
 import { ClaudeProvider } from "../Services/ClaudeProvider";
 import type { CodexProviderShape } from "../Services/CodexProvider";
 import { CodexProvider } from "../Services/CodexProvider";
+import type { DevinProviderShape } from "../Services/DevinProvider";
+import { DevinProvider } from "../Services/DevinProvider";
 import type { CursorProviderShape, OpenCodeProviderShape } from "../Services/HarnessProvider";
 import { CursorProvider, OpenCodeProvider } from "../Services/HarnessProvider";
 import { ProviderRegistry, type ProviderRegistryShape } from "../Services/ProviderRegistry";
@@ -91,20 +94,26 @@ function makeProviderRegistryEffect(
   });
 }
 
-/** Registry with Codex + Claude only (harness disabled). */
+/** Registry with direct providers plus Devin (harness disabled). */
 export const ProviderRegistryLive = Layer.effect(
   ProviderRegistry,
   Effect.gen(function* () {
     const codexProvider = yield* CodexProvider;
     const claudeProvider = yield* ClaudeProvider;
-    return yield* makeProviderRegistryEffect([codexProvider, claudeProvider], {
+    const devinProvider = yield* DevinProvider;
+    return yield* makeProviderRegistryEffect([codexProvider, claudeProvider, devinProvider], {
       codex: codexProvider,
       claudeAgent: claudeProvider,
+      devin: devinProvider,
     });
   }),
-).pipe(Layer.provideMerge(CodexProviderLive), Layer.provideMerge(ClaudeProviderLive));
+).pipe(
+  Layer.provideMerge(CodexProviderLive),
+  Layer.provideMerge(ClaudeProviderLive),
+  Layer.provideMerge(DevinProviderLive),
+);
 
-/** Registry with all 4 providers (harness enabled). */
+/** Registry with direct providers, Devin, and harness-backed providers. */
 export const ProviderRegistryWithHarnessLive = Layer.effect(
   ProviderRegistry,
   Effect.gen(function* () {
@@ -123,13 +132,15 @@ export const ProviderRegistryWithHarnessLive = Layer.effect(
       ),
     };
     const claudeProvider: ClaudeProviderShape = yield* ClaudeProvider;
+    const devinProvider: DevinProviderShape = yield* DevinProvider;
     const cursorProvider: CursorProviderShape = yield* CursorProvider;
     const openCodeProvider: OpenCodeProviderShape = yield* OpenCodeProvider;
     return yield* makeProviderRegistryEffect(
-      [codexProvider, claudeProvider, cursorProvider, openCodeProvider],
+      [codexProvider, claudeProvider, devinProvider, cursorProvider, openCodeProvider],
       {
         codex: codexProvider,
         claudeAgent: claudeProvider,
+        devin: devinProvider,
         cursor: cursorProvider,
         opencode: openCodeProvider,
       },
@@ -138,6 +149,7 @@ export const ProviderRegistryWithHarnessLive = Layer.effect(
 ).pipe(
   Layer.provideMerge(CodexProviderLive),
   Layer.provideMerge(ClaudeProviderLive),
+  Layer.provideMerge(DevinProviderLive),
   Layer.provideMerge(CursorProviderLive),
   Layer.provideMerge(OpenCodeProviderLive),
 );

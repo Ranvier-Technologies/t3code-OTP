@@ -1129,12 +1129,13 @@ describe("deriveActiveWorkStartedAt", () => {
 });
 
 describe("PROVIDER_OPTIONS", () => {
-  it("advertises all four providers as available", () => {
+  it("advertises all five providers as available", () => {
     expect(PROVIDER_OPTIONS).toEqual([
       { value: "codex", label: "Codex", available: true },
       { value: "claudeAgent", label: "Claude", available: true },
       { value: "cursor", label: "Cursor", available: true },
       { value: "opencode", label: "OpenCode", available: true },
+      { value: "devin", label: "Devin", available: true },
     ]);
   });
 });

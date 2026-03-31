@@ -245,7 +245,7 @@ export const makeTestProviderAdapterHarness = (options?: MakeTestProviderAdapter
 
     const emit = (event: ProviderRuntimeEvent) => Queue.offer(runtimeEvents, event);
     const capabilities =
-      provider === "claudeAgent"
+      provider === "claudeAgent" || provider === "devin"
         ? DIRECT_PROVIDER_CAPABILITIES[provider]
         : HARNESS_PROVIDER_CAPABILITIES[provider];
 

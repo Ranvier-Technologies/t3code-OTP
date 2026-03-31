@@ -68,6 +68,25 @@ describe("ProviderSessionStartInput", () => {
     expect(parsed.modelSelection.options?.fastMode).toBe(true);
     expect(parsed.runtimeMode).toBe("full-access");
   });
+
+  it("accepts Devin model selections without provider options", () => {
+    const parsed = decodeProviderSessionStartInput({
+      threadId: "thread-1",
+      provider: "devin",
+      cwd: "/tmp/workspace",
+      modelSelection: {
+        provider: "devin",
+        model: "devin-default",
+      },
+      runtimeMode: "full-access",
+    });
+
+    expect(parsed.provider).toBe("devin");
+    expect(parsed.modelSelection).toEqual({
+      provider: "devin",
+      model: "devin-default",
+    });
+  });
 });
 
 describe("ProviderSendTurnInput", () => {
@@ -112,5 +131,20 @@ describe("ProviderSendTurnInput", () => {
     }
     expect(parsed.modelSelection.options?.effort).toBe("ultrathink");
     expect(parsed.modelSelection.options?.fastMode).toBe(true);
+  });
+
+  it("accepts Devin modelSelection without provider options", () => {
+    const parsed = decodeProviderSendTurnInput({
+      threadId: "thread-1",
+      modelSelection: {
+        provider: "devin",
+        model: "devin-default",
+      },
+    });
+
+    expect(parsed.modelSelection).toEqual({
+      provider: "devin",
+      model: "devin-default",
+    });
   });
 });

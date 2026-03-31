@@ -1,12 +1,15 @@
 import {
+  type ClaudeModelOptions,
+  type CodexModelOptions,
   DEFAULT_GIT_TEXT_GENERATION_MODEL_BY_PROVIDER,
   type ModelSelection,
+  type ProviderModelOptions,
   type ProviderKind,
   type ServerProvider,
 } from "@t3tools/contracts";
+import type { UnifiedSettings } from "@t3tools/contracts/settings";
 import { normalizeModelSlug, resolveSelectableModel } from "@t3tools/shared/model";
 import { getComposerProviderState } from "./components/chat/composerProviderRegistry";
-import { UnifiedSettings } from "@t3tools/contracts/settings";
 import {
   getDefaultServerModel,
   getProviderModels,
@@ -22,6 +25,8 @@ export type ProviderCustomModelConfig = {
   description: string;
   placeholder: string;
   example: string;
+  supportsCustomModels: boolean;
+  harnessDescription?: string;
 };
 
 export interface AppModelOption {
@@ -30,13 +35,14 @@ export interface AppModelOption {
   isCustom: boolean;
 }
 
-const PROVIDER_CUSTOM_MODEL_CONFIG: Record<ProviderKind, ProviderCustomModelConfig> = {
+export const PROVIDER_CUSTOM_MODEL_CONFIG: Record<ProviderKind, ProviderCustomModelConfig> = {
   codex: {
     provider: "codex",
     title: "Codex",
     description: "Save additional Codex model slugs for the picker and `/model` command.",
     placeholder: "your-codex-model-slug",
     example: "gpt-6.7-codex-ultra-preview",
+    supportsCustomModels: true,
   },
   claudeAgent: {
     provider: "claudeAgent",
@@ -44,6 +50,7 @@ const PROVIDER_CUSTOM_MODEL_CONFIG: Record<ProviderKind, ProviderCustomModelConf
     description: "Save additional Claude model slugs for the picker and `/model` command.",
     placeholder: "your-claude-model-slug",
     example: "claude-sonnet-5-0",
+    supportsCustomModels: true,
   },
   cursor: {
     provider: "cursor",
@@ -51,6 +58,8 @@ const PROVIDER_CUSTOM_MODEL_CONFIG: Record<ProviderKind, ProviderCustomModelConf
     description: "Save additional Cursor model slugs for the picker and `/model` command.",
     placeholder: "your-cursor-model-slug",
     example: "claude-4.6-sonnet-medium",
+    supportsCustomModels: true,
+    harnessDescription: "Routed via Elixir harness",
   },
   opencode: {
     provider: "opencode",
@@ -58,10 +67,63 @@ const PROVIDER_CUSTOM_MODEL_CONFIG: Record<ProviderKind, ProviderCustomModelConf
     description: "Save additional OpenCode model slugs for the picker and `/model` command.",
     placeholder: "your-opencode-model-slug",
     example: "claude-sonnet-4-6",
+    supportsCustomModels: true,
+    harnessDescription: "Routed via Elixir harness",
+  },
+  devin: {
+    provider: "devin",
+    title: "Devin",
+    description: "Devin currently exposes a single built-in model.",
+    placeholder: "devin-default",
+    example: "devin-default",
+    supportsCustomModels: false,
+    harnessDescription: "Exposed by the server runtime as a single built-in model.",
   },
 };
 
 export const MODEL_PROVIDER_SETTINGS = Object.values(PROVIDER_CUSTOM_MODEL_CONFIG);
+
+export function providerSupportsCustomModels(provider: ProviderKind): boolean {
+  return PROVIDER_CUSTOM_MODEL_CONFIG[provider].supportsCustomModels;
+}
+
+export function makeModelSelection(
+  provider: ProviderKind,
+  model: string,
+  options?: ProviderModelOptions[ProviderKind] | null,
+): ModelSelection {
+  switch (provider) {
+    case "codex":
+      return options
+        ? { provider, model, options: options as CodexModelOptions }
+        : { provider, model };
+    case "claudeAgent":
+      return options
+        ? { provider, model, options: options as ClaudeModelOptions }
+        : { provider, model };
+    case "cursor":
+      return { provider, model };
+    case "opencode":
+      return { provider, model };
+    case "devin":
+      return { provider, model: "devin-default" };
+  }
+}
+
+function getConfiguredCustomModels(
+  settings: UnifiedSettings,
+  provider: ProviderKind,
+): ReadonlyArray<string> {
+  switch (provider) {
+    case "codex":
+    case "claudeAgent":
+    case "cursor":
+    case "opencode":
+      return settings.providers[provider].customModels;
+    case "devin":
+      return [];
+  }
+}
 
 export function normalizeCustomModelSlugs(
   models: Iterable<string | null | undefined>,
@@ -113,18 +175,20 @@ export function getAppModelOptions(
       .map((model) => model.slug),
   );
 
-  const customModels = settings.providers[provider].customModels;
-  for (const slug of normalizeCustomModelSlugs(customModels, builtInModelSlugs, provider)) {
-    if (seen.has(slug)) {
-      continue;
-    }
+  const customModels = getConfiguredCustomModels(settings, provider);
+  if (providerSupportsCustomModels(provider)) {
+    for (const slug of normalizeCustomModelSlugs(customModels, builtInModelSlugs, provider)) {
+      if (seen.has(slug)) {
+        continue;
+      }
 
-    seen.add(slug);
-    options.push({
-      slug,
-      name: slug,
-      isCustom: true,
-    });
+      seen.add(slug);
+      options.push({
+        slug,
+        name: slug,
+        isCustom: true,
+      });
+    }
   }
 
   const normalizedSelectedModel = normalizeModelSlug(selectedModel, provider);
@@ -132,6 +196,7 @@ export function getAppModelOptions(
     typeof trimmedSelectedModel === "string" &&
     options.some((option) => option.name.toLowerCase() === trimmedSelectedModel);
   if (
+    providerSupportsCustomModels(provider) &&
     normalizedSelectedModel &&
     !seen.has(normalizedSelectedModel) &&
     !selectedModelMatchesExistingName
@@ -191,6 +256,12 @@ export function getCustomModelOptionsByProvider(
       "opencode",
       selectedProvider === "opencode" ? selectedModel : undefined,
     ),
+    devin: getAppModelOptions(
+      settings,
+      providers,
+      "devin",
+      selectedProvider === "devin" ? selectedModel : undefined,
+    ),
   };
 }
 
@@ -219,9 +290,5 @@ export function resolveAppModelSelectionState(
     },
   });
 
-  return {
-    provider,
-    model,
-    ...(modelOptionsForDispatch ? { options: modelOptionsForDispatch } : {}),
-  };
+  return makeModelSelection(provider, model, modelOptionsForDispatch);
 }

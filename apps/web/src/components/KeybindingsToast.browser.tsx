@@ -65,6 +65,11 @@ function createBaseServerConfig(): ServerConfig {
         claudeAgent: { enabled: true, binaryPath: "", customModels: [] },
         cursor: { enabled: true, customModels: [] },
         opencode: { enabled: true, customModels: [] },
+        devin: {
+          enabled: true,
+          orgId: "",
+          baseUrl: "https://api.devin.ai",
+        },
       },
     },
   };

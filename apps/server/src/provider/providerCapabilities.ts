@@ -6,6 +6,18 @@ import {
 
 export const DIRECT_PROVIDER_CAPABILITIES = DEFAULT_PROVIDER_CAPABILITIES;
 
+export const DEVIN_PROVIDER_CAPABILITIES: ProviderCapabilities = {
+  sessionModelSwitch: "unsupported",
+  supportsUserInput: false,
+  supportsRollback: false,
+  supportsFileChangeApproval: false,
+  resume: "basic",
+  subagents: "none",
+  attachments: "basic",
+  replay: "basic",
+  mcpConfig: "none",
+};
+
 export const HARNESS_PROVIDER_CAPABILITIES: Record<
   Extract<ProviderKind, "codex" | "cursor" | "opencode">,
   ProviderCapabilities
