@@ -4,6 +4,7 @@ import {
   type OrchestrationLatestTurn,
   type OrchestrationThreadActivity,
   type OrchestrationProposedPlanId,
+  type ProviderCommand,
   type ProviderKind,
   type ToolLifecycleItemType,
   type UserInputQuestion,
@@ -179,6 +180,31 @@ function isStalePendingRequestFailureDetail(detail: string | undefined): boolean
     normalized.includes("unknown pending permission request") ||
     normalized.includes("unknown pending user-input request")
   );
+}
+
+export function deriveProviderCommands(
+  activities: ReadonlyArray<OrchestrationThreadActivity>,
+): ProviderCommand[] {
+  // Find the latest session-commands activity (commands are re-sent on session restart)
+  for (let i = activities.length - 1; i >= 0; i--) {
+    const activity = activities[i]!;
+    if (activity.kind === "session-commands") {
+      const payload = activity.payload as Record<string, unknown> | null;
+      const commands = payload?.commands;
+      if (Array.isArray(commands)) {
+        return commands.filter((c): c is ProviderCommand => {
+          if (typeof c !== "object" || c === null) return false;
+          const r = c as Record<string, unknown>;
+          return (
+            typeof r.name === "string" &&
+            typeof r.description === "string" &&
+            typeof r.type === "string"
+          );
+        });
+      }
+    }
+  }
+  return [];
 }
 
 export function derivePendingApprovals(

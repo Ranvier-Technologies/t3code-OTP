@@ -22,21 +22,21 @@ defmodule Harness.Dev.Explain do
       |----------|-----------|-----------|--------|------------|
       | Codex | stdio JSON-RPC 2.0 (Erlang Port) | Long-lived process, multiple turns | `codex app-server` | API key or ChatGPT account |
       | Claude | stdout stream-json (Erlang Port) | New process per turn | `claude --output-format=stream-json` | API key (via claude binary) |
-      | Cursor | stdout stream-json (Erlang Port) | New process per turn | `cursor agent --print --output-format stream-json` | Cursor account (via binary) |
+      | Cursor | Bidirectional stdio JSON-RPC 2.0 (Erlang Port, ACP) | Long-lived (one process per thread) | `cursor agent acp` | Cursor account (via binary) |
       | OpenCode | HTTP REST + SSE | Long-lived HTTP server | `opencode serve --port PORT` | Configurable per-provider |
 
       **Key differences:**
       - Codex and OpenCode are long-lived: one process handles multiple turns.
-      - Claude and Cursor spawn a new process per turn.
-      - Codex uses bidirectional stdio (JSON-RPC request/response).
-      - Claude and Cursor use unidirectional stdout (stream of JSON events).
+      - Claude spawns a new process per turn.
+      - Codex and Cursor (ACP) use bidirectional stdio (JSON-RPC request/response).
+      - Claude uses unidirectional stdout (stream of JSON events).
       - OpenCode uses HTTP POST for commands and SSE for event streaming.
       """,
       related_topics: ["startup", "bridge-contract"],
       related_files: [
         "apps/harness/lib/harness/providers/codex_session.ex",
         "apps/harness/lib/harness/providers/claude_session.ex",
-        "apps/harness/lib/harness/providers/cursor_session.ex",
+        "apps/harness/lib/harness/providers/acp_session.ex",
         "apps/harness/lib/harness/providers/opencode_session.ex"
       ]
     },
