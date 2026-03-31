@@ -2609,7 +2609,9 @@ export default function ChatView({ threadId }: ChatViewProps) {
       const title = truncateTitle(titleSeed);
       const threadCreateModelSelection: ModelSelection = makeModelSelection(
         selectedProvider,
-        selectedModel || activeProject.defaultModelSelection?.model || DEFAULT_MODEL_BY_PROVIDER.codex,
+        selectedModel ||
+          activeProject.defaultModelSelection?.model ||
+          DEFAULT_MODEL_BY_PROVIDER.codex,
         "options" in selectedModelSelection ? selectedModelSelection.options : undefined,
       );
 
@@ -3154,7 +3156,10 @@ export default function ChatView({ threadId }: ChatViewProps) {
         providerStatuses,
         model,
       );
-      const nextModelSelection: ModelSelection = makeModelSelection(resolvedProvider, resolvedModel);
+      const nextModelSelection: ModelSelection = makeModelSelection(
+        resolvedProvider,
+        resolvedModel,
+      );
       setComposerDraftModelSelection(activeThread.id, nextModelSelection);
       setStickyComposerModelSelection(nextModelSelection);
       scheduleComposerFocus();

@@ -531,9 +531,7 @@ export const DevinAdapterLive = Layer.effect(
             yield* completeActiveTurn(context, "error", "error");
             return { continuePolling: false, delayMs: null as number | null };
           }
-          return yield* Effect.fail(
-            toRequestError("DevinAdapter.poll.getSession", toApiDetail(error), error),
-          );
+          return yield* toRequestError("DevinAdapter.poll.getSession", toApiDetail(error), error);
         }
         const session = sessionResult.success;
         context.remote = {
@@ -762,11 +760,9 @@ export const DevinAdapterLive = Layer.effect(
                 attachment,
               });
               if (!attachmentPath) {
-                return yield* Effect.fail(
-                  toValidationError(
-                    "DevinAdapter.sendTurn",
-                    `Could not resolve attachment '${attachment.id}' from the attachment store.`,
-                  ),
+                return yield* toValidationError(
+                  "DevinAdapter.sendTurn",
+                  `Could not resolve attachment '${attachment.id}' from the attachment store.`,
                 );
               }
               const uploaded = yield* Effect.tryPromise(() =>
@@ -812,11 +808,9 @@ export const DevinAdapterLive = Layer.effect(
             yield* ensurePolling(input.threadId, context);
           } else {
             if ((input.attachments ?? []).length > 0) {
-              return yield* Effect.fail(
-                toValidationError(
-                  "DevinAdapter.sendTurn",
-                  "Devin attachments are only supported on the first turn.",
-                ),
+              return yield* toValidationError(
+                "DevinAdapter.sendTurn",
+                "Devin attachments are only supported on the first turn.",
               );
             }
             yield* client

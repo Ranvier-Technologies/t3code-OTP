@@ -1115,9 +1115,7 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
         yield* requireMcpCapable(threadId, operation);
         const harness = Option.getOrUndefined(harnessOption);
         if (!harness) {
-          return yield* Effect.fail(
-            toValidationError(operation, "MCP management requires the Elixir harness."),
-          );
+          return yield* toValidationError(operation, "MCP management requires the Elixir harness.");
         }
         return yield* fn(harness);
       });

@@ -55,10 +55,7 @@ function toNonEmptyProviderInput(value: string | undefined): string | undefined 
   return normalized && normalized.length > 0 ? normalized : undefined;
 }
 
-function setModelSelectionModel(
-  selection: ModelSelection,
-  model: string,
-): ModelSelection {
+function setModelSelectionModel(selection: ModelSelection, model: string): ModelSelection {
   switch (selection.provider) {
     case "codex":
       return {
