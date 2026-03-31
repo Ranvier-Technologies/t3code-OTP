@@ -4012,7 +4012,9 @@ export default function ChatView({ threadId }: ChatViewProps) {
                                     size="sm"
                                     type="button"
                                     onClick={() => setCommandsPanelOpen((v) => !v)}
-                                    title={commandsPanelOpen ? "Hide commands" : "Show provider commands"}
+                                    title={
+                                      commandsPanelOpen ? "Hide commands" : "Show provider commands"
+                                    }
                                     aria-expanded={commandsPanelOpen}
                                     aria-haspopup="dialog"
                                   >
@@ -4024,9 +4026,10 @@ export default function ChatView({ threadId }: ChatViewProps) {
                                       <ProviderCommandsPanel
                                         commands={providerCommands}
                                         onSelectCommand={(name) => {
-                                          const composerEl = document.querySelector<HTMLTextAreaElement>(
-                                            "[data-chat-composer-input]",
-                                          );
+                                          const composerEl =
+                                            document.querySelector<HTMLTextAreaElement>(
+                                              "[data-chat-composer-input]",
+                                            );
                                           if (composerEl) {
                                             const nativeInputValueSetter =
                                               Object.getOwnPropertyDescriptor(

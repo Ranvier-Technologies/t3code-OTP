@@ -57,28 +57,16 @@ function logWire(direction: ">>>" | "<<<", line: string) {
     if (parsed) {
       const method =
         parsed.method ??
-        (parsed.result
-          ? `response:${parsed.id}`
-          : parsed.error
-            ? `error:${parsed.id}`
-            : "?");
-      console.log(
-        `\x1b[${direction === ">>>" ? "36" : "33"}m${direction}\x1b[0m ${method}`,
-      );
+        (parsed.result ? `response:${parsed.id}` : parsed.error ? `error:${parsed.id}` : "?");
+      console.log(`\x1b[${direction === ">>>" ? "36" : "33"}m${direction}\x1b[0m ${method}`);
       if (parsed.error) {
-        console.log(
-          `    \x1b[31merror:\x1b[0m ${JSON.stringify(parsed.error)}`,
-        );
+        console.log(`    \x1b[31merror:\x1b[0m ${JSON.stringify(parsed.error)}`);
       }
       if (
         parsed.params?.update?.sessionUpdate &&
-        !["agent_message_chunk", "agent_thought_chunk"].includes(
-          parsed.params.update.sessionUpdate,
-        )
+        !["agent_message_chunk", "agent_thought_chunk"].includes(parsed.params.update.sessionUpdate)
       ) {
-        console.log(
-          `    update: ${parsed.params.update.sessionUpdate}`,
-        );
+        console.log(`    update: ${parsed.params.update.sessionUpdate}`);
       }
     } else {
       console.log(entry);
@@ -154,10 +142,7 @@ function handleLine(line: string) {
 
   // Notification from agent
   if (msg.method === "session/update") {
-    const update = (msg.params as Record<string, unknown>)?.update as Record<
-      string,
-      unknown
-    >;
+    const update = (msg.params as Record<string, unknown>)?.update as Record<string, unknown>;
     if (!update) return;
 
     const variant = update.sessionUpdate as string;
@@ -167,8 +152,7 @@ function handleLine(line: string) {
       const content = update.content as Record<string, unknown>;
       const text = content?.text as string;
       if (text) {
-        const prefix =
-          variant === "agent_thought_chunk" ? "\x1b[2m" : "\x1b[0m";
+        const prefix = variant === "agent_thought_chunk" ? "\x1b[2m" : "\x1b[0m";
         process.stdout.write(`${prefix}${text}\x1b[0m`);
       }
     }
@@ -177,21 +161,13 @@ function handleLine(line: string) {
 
   // Incoming request from agent (permissions, elicitations, cursor extensions)
   if (typeof msg.id === "number" && msg.method) {
-    handleIncomingRequest(
-      msg.id,
-      msg.method as string,
-      msg.params as Record<string, unknown>,
-    );
+    handleIncomingRequest(msg.id, msg.method as string, msg.params as Record<string, unknown>);
   }
 }
 
 let acpProcess: ReturnType<typeof spawn> | null = null;
 
-function handleIncomingRequest(
-  id: number,
-  method: string,
-  params: Record<string, unknown>,
-) {
+function handleIncomingRequest(id: number, method: string, params: Record<string, unknown>) {
   console.log(`\n\x1b[35m← incoming request:\x1b[0m ${method}`);
   console.log(`  params: ${JSON.stringify(params, null, 2)}`);
 
@@ -212,9 +188,7 @@ function handleIncomingRequest(
     method === "cursor/ask_question" ||
     method === "cursor/create_plan"
   ) {
-    console.log(
-      `  \x1b[33m→ captured! Sending empty response for schema probing\x1b[0m`,
-    );
+    console.log(`  \x1b[33m→ captured! Sending empty response for schema probing\x1b[0m`);
     send(acpProcess!, { jsonrpc: "2.0", id, result: {} });
     return;
   }
@@ -255,15 +229,10 @@ async function handshake(proc: ReturnType<typeof spawn>): Promise<string> {
 
   const capabilities = initResult.agentCapabilities as Record<string, unknown>;
   const authMethods = initResult.authMethods as Array<Record<string, unknown>>;
-  console.log(
-    `  capabilities: ${JSON.stringify(capabilities)}`,
-  );
-  console.log(
-    `  authMethods: ${JSON.stringify(authMethods?.map((m) => m.id))}`,
-  );
+  console.log(`  capabilities: ${JSON.stringify(capabilities)}`);
+  console.log(`  authMethods: ${JSON.stringify(authMethods?.map((m) => m.id))}`);
 
-  const methodId =
-    (authMethods?.[0]?.id as string) ?? "cursor_login";
+  const methodId = (authMethods?.[0]?.id as string) ?? "cursor_login";
   console.log(`\x1b[1m--- Authenticate (${methodId}) ---\x1b[0m`);
   await sendRequest(proc, "authenticate", { methodId });
 
@@ -288,9 +257,7 @@ async function handshake(proc: ReturnType<typeof spawn>): Promise<string> {
   const sid = sessionResult.sessionId as string;
   console.log(`  sessionId: ${sid}`);
 
-  const configOptions = sessionResult.configOptions as Array<
-    Record<string, unknown>
-  >;
+  const configOptions = sessionResult.configOptions as Array<Record<string, unknown>>;
   if (configOptions) {
     for (const opt of configOptions) {
       console.log(
@@ -322,10 +289,7 @@ function printHelp() {
 `);
 }
 
-async function handleCommand(
-  proc: ReturnType<typeof spawn>,
-  input: string,
-) {
+async function handleCommand(proc: ReturnType<typeof spawn>, input: string) {
   const trimmed = input.trim();
   if (!trimmed) return;
 
@@ -396,15 +360,11 @@ async function handleCommand(
       case "/config":
         try {
           // Re-fetch by setting current value
-          const result = (await sendRequest(
-            proc,
-            "session/set_config_option",
-            {
-              sessionId: sessionId!,
-              configId: "model",
-              value: "default[]",
-            },
-          )) as Record<string, unknown>;
+          const result = (await sendRequest(proc, "session/set_config_option", {
+            sessionId: sessionId!,
+            configId: "model",
+            value: "default[]",
+          })) as Record<string, unknown>;
           console.log(JSON.stringify(result, null, 2));
         } catch (e) {
           console.log(`\x1b[31mError:\x1b[0m ${e}`);
@@ -436,11 +396,7 @@ async function handleCommand(
         }
         try {
           const parsed = JSON.parse(arg);
-          const result = await sendRequest(
-            proc,
-            parsed.method,
-            parsed.params ?? {},
-          );
+          const result = await sendRequest(proc, parsed.method, parsed.params ?? {});
           console.log(JSON.stringify(result, null, 2));
         } catch (e) {
           console.log(`\x1b[31mError:\x1b[0m ${e}`);
@@ -455,9 +411,7 @@ async function handleCommand(
         console.log(`Probing ${arg} with empty params...`);
         try {
           const result = await sendRequest(proc, arg, {});
-          console.log(
-            `\x1b[32mSuccess:\x1b[0m ${JSON.stringify(result, null, 2)}`,
-          );
+          console.log(`\x1b[32mSuccess:\x1b[0m ${JSON.stringify(result, null, 2)}`);
         } catch (e) {
           console.log(`\x1b[33mValidation:\x1b[0m ${e}`);
         }

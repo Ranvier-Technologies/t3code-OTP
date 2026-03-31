@@ -121,18 +121,17 @@ export function acpMcpServersFromResolved(config: ResolvedMcpConfig): Record<str
           type: "command",
           command: server.command,
           args: server.args ?? [],
-          env: server.env
-            ? Object.entries(server.env).map(([key, value]) => ({ key, value }))
-            : [],
+          env: server.env ? Object.entries(server.env).map(([key, value]) => ({ key, value })) : [],
         };
       }
       return {
         name: server.name,
         type: server.transport,
         url: server.url,
-        headers: "headers" in server && server.headers
-          ? Object.entries(server.headers).map(([key, value]) => ({ key, value }))
-          : [],
+        headers:
+          "headers" in server && server.headers
+            ? Object.entries(server.headers).map(([key, value]) => ({ key, value }))
+            : [],
       };
     });
 }

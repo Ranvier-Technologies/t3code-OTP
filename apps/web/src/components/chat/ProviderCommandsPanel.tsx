@@ -31,10 +31,7 @@ export const ProviderCommandsPanel = memo(function ProviderCommandsPanel({
   const filtered = commands.filter((cmd) => {
     if (!query) return true;
     const q = query.toLowerCase();
-    return (
-      cmd.name.toLowerCase().includes(q) ||
-      cmd.description.toLowerCase().includes(q)
-    );
+    return cmd.name.toLowerCase().includes(q) || cmd.description.toLowerCase().includes(q);
   });
 
   const grouped = TYPE_ORDER.map((type) => ({
@@ -87,9 +84,7 @@ export const ProviderCommandsPanel = memo(function ProviderCommandsPanel({
 
   // Scroll active item into view
   useEffect(() => {
-    const activeEl = listRef.current?.querySelector(
-      `[data-command-index="${activeIndex}"]`,
-    );
+    const activeEl = listRef.current?.querySelector(`[data-command-index="${activeIndex}"]`);
     activeEl?.scrollIntoView({ block: "nearest" });
   }, [activeIndex]);
 
@@ -114,9 +109,7 @@ export const ProviderCommandsPanel = memo(function ProviderCommandsPanel({
           aria-label="Search provider commands"
           aria-controls="provider-commands-list"
           aria-activedescendant={
-            flatItems[activeIndex]
-              ? `cmd-${flatItems[activeIndex].name}`
-              : undefined
+            flatItems[activeIndex] ? `cmd-${flatItems[activeIndex].name}` : undefined
           }
           role="combobox"
           aria-expanded="true"
@@ -147,9 +140,7 @@ export const ProviderCommandsPanel = memo(function ProviderCommandsPanel({
                   aria-selected={idx === activeIndex}
                   className={cn(
                     "flex cursor-pointer select-none items-center gap-2 px-3 py-1.5",
-                    idx === activeIndex
-                      ? "bg-accent text-accent-foreground"
-                      : "hover:bg-accent/50",
+                    idx === activeIndex ? "bg-accent text-accent-foreground" : "hover:bg-accent/50",
                   )}
                   onMouseEnter={() => setActiveIndex(idx)}
                   onMouseDown={(e) => e.preventDefault()}

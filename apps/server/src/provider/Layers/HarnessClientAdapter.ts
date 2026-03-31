@@ -941,14 +941,10 @@ function mapHarnessEventToRuntimeEvents(
         ...runtimeEventBase(event, canonicalThreadId),
         type: "turn.plan.updated" as const,
         payload: {
-          ...(asString(payload?.overview)
-            ? { explanation: asString(payload?.overview) }
-            : {}),
+          ...(asString(payload?.overview) ? { explanation: asString(payload?.overview) } : {}),
           plan: steps
             .map((entry) => asObject(entry))
-            .filter(
-              (entry): entry is Record<string, unknown> => entry !== undefined,
-            )
+            .filter((entry): entry is Record<string, unknown> => entry !== undefined)
             .map((entry) => ({
               step: asString(entry.content) ?? asString(entry.title) ?? "step",
               status:
@@ -970,16 +966,12 @@ function mapHarnessEventToRuntimeEvents(
         payload: {
           commands: commands
             .map((cmd) => asObject(cmd))
-            .filter(
-              (cmd): cmd is Record<string, unknown> => cmd !== undefined,
-            )
+            .filter((cmd): cmd is Record<string, unknown> => cmd !== undefined)
             .map((cmd) => ({
               name: asString(cmd.name) ?? "",
               description: asString(cmd.description) ?? "",
               type:
-                cmd.type === "builtin" ||
-                cmd.type === "user" ||
-                cmd.type === "project"
+                cmd.type === "builtin" || cmd.type === "user" || cmd.type === "project"
                   ? (cmd.type as "builtin" | "user" | "project")
                   : ("other" as const),
             })),
@@ -988,10 +980,7 @@ function mapHarnessEventToRuntimeEvents(
     ];
   }
 
-  if (
-    event.method === "acp/extension" ||
-    event.method === "acp/session_update_unknown"
-  ) {
+  if (event.method === "acp/extension" || event.method === "acp/session_update_unknown") {
     // Log for debugging but don't produce runtime events —
     // these are informational pass-throughs from AcpSession
     return [];
@@ -1366,11 +1355,7 @@ export function makeHarnessClientAdapterLive(options?: HarnessClientAdapterLiveO
             ),
         });
 
-      const setConfig: HarnessClientAdapterShape["setConfig"] = (
-        threadId,
-        configId,
-        value,
-      ) =>
+      const setConfig: HarnessClientAdapterShape["setConfig"] = (threadId, configId, value) =>
         Effect.tryPromise({
           try: () => manager.setConfig(threadId, configId, value),
           catch: (cause) =>
