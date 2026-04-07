@@ -618,10 +618,10 @@
         <strong>A note on scope.</strong> The <code>HarnessService</code> abstraction in PR #581 is
         itself still under discussion — Theo's own review comment asks what differentiates it from
         the existing <code>ProviderService</code> / <code>ProviderServiceLive</code> layer. This
-        exploration treats the harness boundary as a useful architectural surface regardless of where
-        it ultimately lives in T3Code's stack. If the team consolidates <code>HarnessService</code>
-        back into <code>ProviderService</code>, the OTP mapping still applies — it's the supervision
-        boundary that matters, not the class name.
+        exploration treats the harness boundary as a useful architectural surface regardless of
+        where it ultimately lives in T3Code's stack. If the team consolidates
+        <code>HarnessService</code> back into <code>ProviderService</code>, the OTP mapping still
+        applies — it's the supervision boundary that matters, not the class name.
       </p>
 
       <h2>The constraint that shapes everything</h2>
@@ -736,8 +736,8 @@
 
       <p>
         Guimarães argues that you can get about 70% of the way there with enough engineering — the
-        remaining 30%, which includes preemptive scheduling, per-process garbage collection, and true
-        fault isolation, requires runtime-level support.
+        remaining 30%, which includes preemptive scheduling, per-process garbage collection, and
+        true fault isolation, requires runtime-level support.
       </p>
 
       <p>
@@ -1290,7 +1290,9 @@
         </div>
         <div class="stat">
           <div class="stat-val" style="color: var(--green)">~2%</div>
-          <div class="stat-label">BEAM total memory growth with same leak (bounded per-process)</div>
+          <div class="stat-label">
+            BEAM total memory growth with same leak (bounded per-process)
+          </div>
         </div>
         <div class="stat">
           <div class="stat-val" style="color: var(--amber)">169ms</div>
@@ -1306,10 +1308,10 @@
       <p>
         We scaled concurrent sessions from 5 to 200, all streaming simultaneously. From 5 to 100,
         both runtimes are functionally identical — you would not be able to tell them apart. At 150,
-        Node's event loop lag creeps to 199ms. At 200, Node degrades sharply: latency jumps to 3.3 seconds,
-        throughput <em>drops</em> (the event loop is so saturated it processes fewer events, not
-        more), and event loop lag hits 1.2 seconds. Elixir at 200 sessions: 607ms latency, 18,000
-        events/sec, near-zero scheduler utilization, constant ~268KB per session.
+        Node's event loop lag creeps to 199ms. At 200, Node degrades sharply: latency jumps to 3.3
+        seconds, throughput <em>drops</em> (the event loop is so saturated it processes fewer
+        events, not more), and event loop lag hits 1.2 seconds. Elixir at 200 sessions: 607ms
+        latency, 18,000 events/sec, near-zero scheduler utilization, constant ~268KB per session.
       </p>
       <p>
         This is the number that matters: if T3Code stays at 1–10 sessions, PR #581's Node approach
@@ -1339,10 +1341,10 @@
         contracts, adding tests, and wiring it through the orchestration layer. In the OTP
         architecture, providers that speak a CLI or HTTP protocol (and don't require a Node-specific
         SDK) can be added as a single GenServer module + a clause in
-        <code>SessionManager.provider_module/1</code>, with no changes to the Node side. For providers
-        that <em>do</em> require Node SDKs — Claude (Agent SDK) and Codex (app server) today — the
-        Node adapter is still necessary. The OTP layer manages supervision and lifecycle, but the SDK
-        call itself stays in Node.
+        <code>SessionManager.provider_module/1</code>, with no changes to the Node side. For
+        providers that <em>do</em> require Node SDKs — Claude (Agent SDK) and Codex (app server)
+        today — the Node adapter is still necessary. The OTP layer manages supervision and
+        lifecycle, but the SDK call itself stays in Node.
       </p>
       <p>
         The savings are real but scoped: the more providers that communicate via standard protocols
@@ -1563,17 +1565,17 @@
           >A note on the "careful application code" failure class.</strong
         >
         Macroscope's review of PR #581 found concrete instances worth examining. One is a logic bug
-        independent of runtime choice: adapter-emitted events pass through <code>#publish</code>
-        without re-sequencing, which can regress the global snapshot sequence — this would need
-        fixing in Elixir too. But the other two are lifecycle-management concerns that OTP handles
-        structurally: <code>shutdownSession</code> aborts the event stream before the adapter
-        completes, potentially losing final <code>session.exited</code> events; and
+        independent of runtime choice: adapter-emitted events pass through
+        <code>#publish</code> without re-sequencing, which can regress the global snapshot sequence
+        — this would need fixing in Elixir too. But the other two are lifecycle-management concerns
+        that OTP handles structurally: <code>shutdownSession</code> aborts the event stream before
+        the adapter completes, potentially losing final <code>session.exited</code> events; and
         <code>attachSession</code> never calls <code>#startStreaming</code>, leaving attached
         sessions deaf to events. These are exactly the class of lifecycle gaps where a supervisor's
         declarative restart and shutdown policies eliminate entire categories of ordering bugs — not
         because the Node code is bad (it's early WIP and well-structured), but because managing
-        concurrent session lifecycles through application code requires getting every edge case right
-        manually. A supervisor doesn't have edge cases. It has a restart policy.
+        concurrent session lifecycles through application code requires getting every edge case
+        right manually. A supervisor doesn't have edge cases. It has a restart policy.
       </p>
 
       <p style="font-size: 0.85rem; color: var(--fg2)">

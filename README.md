@@ -97,15 +97,15 @@ Full feature matrix including session lifecycle, approval requests, streaming to
 
 ### The headline numbers
 
-| Metric                                  | Node                                      | Elixir                        |
-| --------------------------------------- | ----------------------------------------- | ----------------------------- |
-| Memory with 1 leaky session             | 48→158 MB (+110 MB shared heap, ~229%)     | ~2% total growth (leak bounded per-process) |
-| Event loop lag during leak              | p99 = 169ms                               | N/A (no shared event loop)    |
-| Sibling sessions affected               | All degraded                              | Zero                          |
-| Latency at 200 concurrent sessions      | 3,314ms p99                               | 607ms p99                     |
-| Throughput at 200 sessions              | 5,779 ev/s (event loop saturated)         | 18,000 ev/s                   |
-| Per-session memory (5→200 sessions)     | Unmeasurable (shared heap)                | Constant ~268KB               |
-| Crash lag spike (up to 20 simultaneous) | 1.4–2.7ms                                 | 0.0ms at every count          |
+| Metric                                  | Node                                   | Elixir                                      |
+| --------------------------------------- | -------------------------------------- | ------------------------------------------- |
+| Memory with 1 leaky session             | 48→158 MB (+110 MB shared heap, ~229%) | ~2% total growth (leak bounded per-process) |
+| Event loop lag during leak              | p99 = 169ms                            | N/A (no shared event loop)                  |
+| Sibling sessions affected               | All degraded                           | Zero                                        |
+| Latency at 200 concurrent sessions      | 3,314ms p99                            | 607ms p99                                   |
+| Throughput at 200 sessions              | 5,779 ev/s (event loop saturated)      | 18,000 ev/s                                 |
+| Per-session memory (5→200 sessions)     | Unmeasurable (shared heap)             | Constant ~268KB                             |
+| Crash lag spike (up to 20 simultaneous) | 1.4–2.7ms                              | 0.0ms at every count                        |
 
 ### Real workload
 

@@ -15,16 +15,16 @@ The `cursor agent` CLI has matured significantly beyond the initial `--print` to
 
 ### Invocation Modes
 
-| Mode | Command | Description |
-|------|---------|-------------|
-| Interactive (TUI) | `cursor agent` | Full TUI with chat, tools, approvals |
-| Interactive + prompt | `cursor agent "fix the bug"` | TUI with initial prompt |
-| Headless (print) | `cursor agent -p "fix the bug"` | Non-interactive, stdout output |
-| Cloud | `cursor agent -c` | Opens composer picker |
-| Plan mode | `cursor agent --mode plan` or `--plan` | Read-only analysis |
-| Ask mode | `cursor agent --mode ask` | Q&A, no edits |
-| Resume | `cursor agent --resume [chatId]` | Resume specific session |
-| Continue | `cursor agent --continue` | Continue last session |
+| Mode                 | Command                                | Description                          |
+| -------------------- | -------------------------------------- | ------------------------------------ |
+| Interactive (TUI)    | `cursor agent`                         | Full TUI with chat, tools, approvals |
+| Interactive + prompt | `cursor agent "fix the bug"`           | TUI with initial prompt              |
+| Headless (print)     | `cursor agent -p "fix the bug"`        | Non-interactive, stdout output       |
+| Cloud                | `cursor agent -c`                      | Opens composer picker                |
+| Plan mode            | `cursor agent --mode plan` or `--plan` | Read-only analysis                   |
+| Ask mode             | `cursor agent --mode ask`              | Q&A, no edits                        |
+| Resume               | `cursor agent --resume [chatId]`       | Resume specific session              |
+| Continue             | `cursor agent --continue`              | Continue last session                |
 
 ### CLI Flags (complete list)
 
@@ -70,58 +70,58 @@ The `cursor agent` CLI has matured significantly beyond the initial `--print` to
 
 ### Subcommands
 
-| Command | Description |
-|---------|-------------|
-| `agent [prompt...]` | Start the agent (default) |
-| `login` | Authenticate with Cursor (set `NO_OPEN_BROWSER` to disable browser) |
-| `logout` | Sign out and clear auth |
-| `status` / `whoami` | View auth status |
-| `models` | List available models |
-| `about` | Version, system, account info |
-| `update` | Self-update cursor agent |
-| `create-chat` | Create empty chat, return ID |
-| `ls` | Browse chat sessions for resume (interactive) |
-| `resume` | Resume latest chat |
-| `mcp` | MCP server management (see below) |
-| `generate-rule` / `rule` | Interactive Cursor rule generation |
-| `install-shell-integration` | Install shell integration to `~/.zshrc` |
-| `uninstall-shell-integration` | Remove shell integration |
+| Command                       | Description                                                         |
+| ----------------------------- | ------------------------------------------------------------------- |
+| `agent [prompt...]`           | Start the agent (default)                                           |
+| `login`                       | Authenticate with Cursor (set `NO_OPEN_BROWSER` to disable browser) |
+| `logout`                      | Sign out and clear auth                                             |
+| `status` / `whoami`           | View auth status                                                    |
+| `models`                      | List available models                                               |
+| `about`                       | Version, system, account info                                       |
+| `update`                      | Self-update cursor agent                                            |
+| `create-chat`                 | Create empty chat, return ID                                        |
+| `ls`                          | Browse chat sessions for resume (interactive)                       |
+| `resume`                      | Resume latest chat                                                  |
+| `mcp`                         | MCP server management (see below)                                   |
+| `generate-rule` / `rule`      | Interactive Cursor rule generation                                  |
+| `install-shell-integration`   | Install shell integration to `~/.zshrc`                             |
+| `uninstall-shell-integration` | Remove shell integration                                            |
 
 ### MCP Subcommands (`cursor agent mcp`)
 
-| Command | Description |
-|---------|-------------|
-| `login <identifier>` | Authenticate with MCP server from `.cursor/mcp.json` |
-| `list` | List configured MCP servers and their status |
-| `list-tools <identifier>` | List available tools for a specific MCP |
-| `enable <identifier>` | Add MCP server to local approved list |
-| `disable <identifier>` | Disable an MCP server |
+| Command                   | Description                                          |
+| ------------------------- | ---------------------------------------------------- |
+| `login <identifier>`      | Authenticate with MCP server from `.cursor/mcp.json` |
+| `list`                    | List configured MCP servers and their status         |
+| `list-tools <identifier>` | List available tools for a specific MCP              |
+| `enable <identifier>`     | Add MCP server to local approved list                |
+| `disable <identifier>`    | Disable an MCP server                                |
 
 ### Available Models (as of 2026-04-06)
 
 85+ models available. Key families:
 
-| Family | Models | Notes |
-|--------|--------|-------|
-| **Auto** | `auto` | Default, Cursor selects model |
-| **Composer** | `composer-2-fast` (default), `composer-2`, `composer-1.5` | Cursor's own models |
-| **GPT-5.4** | low/medium/high/xhigh + fast variants | 1M context, reasoning levels |
-| **GPT-5.4 Mini** | none/low/medium/high/xhigh | Smaller, faster |
-| **GPT-5.4 Nano** | none/low/medium/high/xhigh | Smallest GPT-5.4 |
-| **GPT-5.3 Codex** | low/medium/high/xhigh + fast variants | Code-optimized |
-| **GPT-5.3 Codex Spark** | low/medium/high/xhigh (preview) | New Spark series |
-| **GPT-5.2 Codex** | low/medium/high/xhigh + fast variants | Previous gen |
-| **GPT-5.2** | low/medium/high/xhigh + fast variants | General |
-| **GPT-5.1** | low/medium/high | Older gen |
-| **GPT-5.1 Codex Max** | low/medium/high/xhigh + fast | Previous code-optimized |
-| **GPT-5.1 Codex Mini** | low/medium/high | Compact code model |
-| **GPT-5 Mini** | `gpt-5-mini` | Legacy |
-| **Claude 4.6** | `claude-4.6-opus-high`, `opus-max`, `opus-high-thinking`, `opus-max-thinking`, `sonnet-medium`, `sonnet-medium-thinking` | 1M context |
-| **Claude 4.5** | `claude-4.5-opus-high`, `opus-high-thinking`, `sonnet`, `sonnet-thinking` | 1M context |
-| **Claude 4** | `claude-4-sonnet`, `4-sonnet-1m`, `4-sonnet-thinking`, `4-sonnet-1m-thinking` | |
-| **Gemini** | `gemini-3.1-pro`, `gemini-3-flash` | Google models |
-| **Grok** | `grok-4-20`, `grok-4-20-thinking` | xAI models |
-| **Kimi** | `kimi-k2.5` | Moonshot model |
+| Family                  | Models                                                                                                                   | Notes                         |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------ | ----------------------------- |
+| **Auto**                | `auto`                                                                                                                   | Default, Cursor selects model |
+| **Composer**            | `composer-2-fast` (default), `composer-2`, `composer-1.5`                                                                | Cursor's own models           |
+| **GPT-5.4**             | low/medium/high/xhigh + fast variants                                                                                    | 1M context, reasoning levels  |
+| **GPT-5.4 Mini**        | none/low/medium/high/xhigh                                                                                               | Smaller, faster               |
+| **GPT-5.4 Nano**        | none/low/medium/high/xhigh                                                                                               | Smallest GPT-5.4              |
+| **GPT-5.3 Codex**       | low/medium/high/xhigh + fast variants                                                                                    | Code-optimized                |
+| **GPT-5.3 Codex Spark** | low/medium/high/xhigh (preview)                                                                                          | New Spark series              |
+| **GPT-5.2 Codex**       | low/medium/high/xhigh + fast variants                                                                                    | Previous gen                  |
+| **GPT-5.2**             | low/medium/high/xhigh + fast variants                                                                                    | General                       |
+| **GPT-5.1**             | low/medium/high                                                                                                          | Older gen                     |
+| **GPT-5.1 Codex Max**   | low/medium/high/xhigh + fast                                                                                             | Previous code-optimized       |
+| **GPT-5.1 Codex Mini**  | low/medium/high                                                                                                          | Compact code model            |
+| **GPT-5 Mini**          | `gpt-5-mini`                                                                                                             | Legacy                        |
+| **Claude 4.6**          | `claude-4.6-opus-high`, `opus-max`, `opus-high-thinking`, `opus-max-thinking`, `sonnet-medium`, `sonnet-medium-thinking` | 1M context                    |
+| **Claude 4.5**          | `claude-4.5-opus-high`, `opus-high-thinking`, `sonnet`, `sonnet-thinking`                                                | 1M context                    |
+| **Claude 4**            | `claude-4-sonnet`, `4-sonnet-1m`, `4-sonnet-thinking`, `4-sonnet-1m-thinking`                                            |                               |
+| **Gemini**              | `gemini-3.1-pro`, `gemini-3-flash`                                                                                       | Google models                 |
+| **Grok**                | `grok-4-20`, `grok-4-20-thinking`                                                                                        | xAI models                    |
+| **Kimi**                | `kimi-k2.5`                                                                                                              | Moonshot model                |
 
 **Model ID format:** The CLI model IDs use a flat slug format (`claude-4.6-opus-high-thinking`) while the ACP protocol uses a bracketed parameter format (`claude-opus-4-6[thinking=true,context=200k,effort=high]`). The CLI accepts flat slugs and translates internally.
 
@@ -129,13 +129,13 @@ The `cursor agent` CLI has matured significantly beyond the initial `--print` to
 
 ## Meta
 
-| Field | Value |
-|-------|-------|
-| Wire format | Standard JSON-RPC 2.0 (`{"jsonrpc":"2.0", ...}`) |
-| Framing | Newline-delimited JSON (ndjson) — one message per line |
-| ID type | Integer (auto-incrementing, matches request↔response) |
-| Spawn command | `cursor agent acp` (args: `["agent", "acp"]`) |
-| Protocol version | `1` (sent in `initialize`, echoed in response) |
+| Field            | Value                                                  |
+| ---------------- | ------------------------------------------------------ |
+| Wire format      | Standard JSON-RPC 2.0 (`{"jsonrpc":"2.0", ...}`)       |
+| Framing          | Newline-delimited JSON (ndjson) — one message per line |
+| ID type          | Integer (auto-incrementing, matches request↔response)  |
+| Spawn command    | `cursor agent acp` (args: `["agent", "acp"]`)          |
+| Protocol version | `1` (sent in `initialize`, echoed in response)         |
 
 ---
 
@@ -232,6 +232,7 @@ spawn("cursor", ["agent", "acp"])
 ```
 
 **Notes:**
+
 - `agentCapabilities` is flat (not nested)
 - `authMethods` is top-level
 - Setting `fs` and `terminal` capabilities to `true` enables `fs/*` and `terminal/*` callback methods (agent → client)
@@ -258,6 +259,7 @@ spawn("cursor", ["agent", "acp"])
 ```
 
 **Notes:**
+
 - Requires `cursor agent login` to have been run first (or `--api-key` flag)
 
 ---
@@ -295,9 +297,7 @@ spawn("cursor", ["agent", "acp"])
   },
   "models": {
     "currentModelId": "default[]",
-    "availableModels": [
-      { "modelId": "default[]", "name": "Auto" }
-    ]
+    "availableModels": [{ "modelId": "default[]", "name": "Auto" }]
   },
   "configOptions": [
     {
@@ -307,9 +307,7 @@ spawn("cursor", ["agent", "acp"])
       "category": "mode",
       "type": "select",
       "currentValue": "agent",
-      "options": [
-        { "value": "agent", "name": "Agent", "description": "Full agent..." }
-      ]
+      "options": [{ "value": "agent", "name": "Agent", "description": "Full agent..." }]
     },
     {
       "id": "model",
@@ -325,6 +323,7 @@ spawn("cursor", ["agent", "acp"])
 ```
 
 **Side effects:**
+
 - Emits unsolicited `session/update` notification with `available_commands_update` after response
 
 ---
@@ -355,6 +354,7 @@ spawn("cursor", ["agent", "acp"])
 ```
 
 **Notes:**
+
 - Does NOT return `sessionId` (you already have it)
 - `currentModelId` reflects any model changes from prior session
 - Emits `available_commands_update` after response (same as session/new)
@@ -390,6 +390,7 @@ spawn("cursor", ["agent", "acp"])
 ```
 
 **Notes:**
+
 - `prompt` is an **array of content items**, NOT a string
 - `stopReason` is `"end_turn"` or `"cancelled"`
 - Response arrives AFTER all `session/update` streaming is complete
@@ -410,6 +411,7 @@ spawn("cursor", ["agent", "acp"])
 ```
 
 **Behavior:**
+
 - The in-flight `session/prompt` request responds with `{"stopReason": "cancelled"}`
 - Some streaming notifications may arrive between cancel and the prompt response
 - If no prompt is in-flight, cancel is silently ignored
@@ -440,6 +442,7 @@ spawn("cursor", ["agent", "acp"])
 ```
 
 **Notes:**
+
 - Parameter is `configId` (NOT `optionId`)
 - Returns full updated `configOptions` array
 
@@ -466,6 +469,7 @@ spawn("cursor", ["agent", "acp"])
 ```
 
 **Side effects:**
+
 - Emits `session/update` with `current_mode_update` BEFORE the response
 
 ---
@@ -496,13 +500,13 @@ spawn("cursor", ["agent", "acp"])
 
 These methods are **not implemented** in the ACP protocol as of `2026.03.30-a5d3e17`:
 
-| Method | Error | CLI alternative? |
-|--------|-------|-----------------|
-| `session/list` | `"Method not found"` | `cursor agent ls` (TUI-only) |
-| `session/fork` | `"Method not found"` | None |
+| Method           | Error                | CLI alternative?                                |
+| ---------------- | -------------------- | ----------------------------------------------- |
+| `session/list`   | `"Method not found"` | `cursor agent ls` (TUI-only)                    |
+| `session/fork`   | `"Method not found"` | None                                            |
 | `session/resume` | `"Method not found"` | `cursor agent --resume [chatId]` / `--continue` |
-| `session/close` | `"Method not found"` | None |
-| `logout` | `"Method not found"` | `cursor agent logout` |
+| `session/close`  | `"Method not found"` | None                                            |
+| `logout`         | `"Method not found"` | `cursor agent logout`                           |
 
 ---
 
@@ -519,7 +523,7 @@ These methods are **not implemented** in the ACP protocol as of `2026.03.30-a5d3
 {
   "sessionId": "uuid-string",
   "update": {
-    "sessionUpdate": "<discriminant>",
+    "sessionUpdate": "<discriminant>"
     // ... variant-specific fields
   }
 }
@@ -571,12 +575,12 @@ These methods are **not implemented** in the ACP protocol as of `2026.03.30-a5d3
 
 **`kind` values observed:**
 
-| kind | Description |
-|------|-------------|
-| `"shell"` | Shell/terminal command |
-| `"file_edit"` | File modification |
-| `"file_read"` / `"read"` | File read |
-| `"mcp"` | MCP tool call |
+| kind                     | Description            |
+| ------------------------ | ---------------------- |
+| `"shell"`                | Shell/terminal command |
+| `"file_edit"`            | File modification      |
+| `"file_read"` / `"read"` | File read              |
+| `"mcp"`                  | MCP tool call          |
 
 #### Variant: `tool_call_update`
 
@@ -592,6 +596,7 @@ These methods are **not implemented** in the ACP protocol as of `2026.03.30-a5d3
 ```
 
 **Status transitions:** `pending` → `in_progress` → `completed`
+
 - `rawOutput` is an **object with `content` key**, NOT a raw string
 - `rawOutput` only present on `completed` status
 
@@ -624,9 +629,7 @@ These methods are **not implemented** in the ACP protocol as of `2026.03.30-a5d3
 ```json
 {
   "sessionUpdate": "plan",
-  "entries": [
-    { "content": "Step description", "status": "pending" }
-  ]
+  "entries": [{ "content": "Step description", "status": "pending" }]
 }
 ```
 
@@ -751,15 +754,15 @@ Structured user input form — schema TBD.
 
 These are only sent if the corresponding capabilities are advertised in `initialize`:
 
-| Method | Purpose |
-|--------|---------|
-| `fs/read_text_file` | Read file through client |
-| `fs/write_text_file` | Write file through client |
-| `terminal/create` | Create terminal |
-| `terminal/output` | Read terminal output |
-| `terminal/wait_for_exit` | Wait for exit |
-| `terminal/kill` | Kill terminal |
-| `terminal/release` | Release handle |
+| Method                   | Purpose                   |
+| ------------------------ | ------------------------- |
+| `fs/read_text_file`      | Read file through client  |
+| `fs/write_text_file`     | Write file through client |
+| `terminal/create`        | Create terminal           |
+| `terminal/output`        | Read terminal output      |
+| `terminal/wait_for_exit` | Wait for exit             |
+| `terminal/kill`          | Kill terminal             |
+| `terminal/release`       | Release handle            |
 
 **Error response when unsupported:**
 
@@ -787,9 +790,7 @@ The `mcpServers` field in `session/new` and `session/load` is a **required array
   "name": "server-name",
   "type": "http",
   "url": "http://host:port/path",
-  "headers": [
-    { "key": "Authorization", "value": "Bearer ..." }
-  ]
+  "headers": [{ "key": "Authorization", "value": "Bearer ..." }]
 }
 ```
 
@@ -800,9 +801,7 @@ The `mcpServers` field in `session/new` and `session/load` is a **required array
   "name": "server-name",
   "type": "sse",
   "url": "http://host:port/sse",
-  "headers": [
-    { "key": "Authorization", "value": "Bearer ..." }
-  ]
+  "headers": [{ "key": "Authorization", "value": "Bearer ..." }]
 }
 ```
 
@@ -814,13 +813,12 @@ The `mcpServers` field in `session/new` and `session/load` is a **required array
   "type": "command",
   "command": "npx",
   "args": ["-y", "@server/mcp"],
-  "env": [
-    { "key": "API_KEY", "value": "..." }
-  ]
+  "env": [{ "key": "API_KEY", "value": "..." }]
 }
 ```
 
 **Key schema notes:**
+
 - Discriminant is `type`, not `transport`
 - `type: "command"` for stdio (not `"stdio"`)
 - `headers` and `env` are arrays of `{key, value}` objects, not `Record<string, string>`
@@ -831,11 +829,11 @@ The `mcpServers` field in `session/new` and `session/load` is a **required array
 
 ```typescript
 interface ConfigOption {
-  id: string;               // "mode" | "model"
+  id: string; // "mode" | "model"
   name: string;
   description: string;
-  category: string;         // "mode" | "model"
-  type: "select";           // only "select" observed
+  category: string; // "mode" | "model"
+  type: "select"; // only "select" observed
   currentValue: string;
   options: SelectOption[];
 }
@@ -869,13 +867,13 @@ claude-sonnet-4-6[thinking=true,context=200k,effort=medium]
 
 **Known parameters:**
 
-| Parameter | Values | Meaning |
-|-----------|--------|---------|
-| `reasoning` | `low`, `medium`, `high` | Reasoning effort |
-| `thinking` | `true`, `false` | Extended thinking |
-| `context` | `200k`, `272k` | Context window |
-| `effort` | `medium`, `high` | Thinking effort |
-| `fast` | `true`, `false` | Fast mode |
+| Parameter   | Values                  | Meaning           |
+| ----------- | ----------------------- | ----------------- |
+| `reasoning` | `low`, `medium`, `high` | Reasoning effort  |
+| `thinking`  | `true`, `false`         | Extended thinking |
+| `context`   | `200k`, `272k`          | Context window    |
+| `effort`    | `medium`, `high`        | Thinking effort   |
+| `fast`      | `true`, `false`         | Fast mode         |
 
 ### CLI Slug Format (from `cursor agent models` / `--model` flag)
 
@@ -914,12 +912,12 @@ The CLI accepts flat slugs and translates to the bracketed ACP format internally
 
 ### Error codes observed
 
-| Code | Message | Data shape | When |
-|------|---------|------------|------|
-| `-32601` | `"Method not found": <method>` | `{"method": "<method>"}` | Unknown method |
-| `-32602` | `Invalid params` | `{"message": "Session <id> not found"}` | Bad session ID |
-| `-32603` | `Internal error` | Zod validation array | Schema validation failure |
-| `-32603` | `Internal error` | `{"details": "Session <id> not found"}` | Session not found |
+| Code     | Message                        | Data shape                              | When                      |
+| -------- | ------------------------------ | --------------------------------------- | ------------------------- |
+| `-32601` | `"Method not found": <method>` | `{"method": "<method>"}`                | Unknown method            |
+| `-32602` | `Invalid params`               | `{"message": "Session <id> not found"}` | Bad session ID            |
+| `-32603` | `Internal error`               | Zod validation array                    | Schema validation failure |
+| `-32603` | `Internal error`               | `{"details": "Session <id> not found"}` | Session not found         |
 
 ### Zod validation error format (`-32603`)
 
@@ -952,11 +950,11 @@ The CLI accepts flat slugs and translates to the bracketed ACP format internally
 
 ### Model-dependent features
 
-| Feature | Composer 2 | GPT-5.4 Mini | Claude 4.6 Opus Thinking | Grok 4.20 Thinking |
-|---------|-----------|-------------|--------------------------|-------------------|
-| `agent_thought_chunk` | No | Yes | Yes (expected) | Yes (expected) |
-| `agent_message_chunk` | Yes | Yes | Yes | Yes |
-| Reasoning stream | N/A | Streams before assistant text | Extended thinking | Chain-of-thought |
+| Feature               | Composer 2 | GPT-5.4 Mini                  | Claude 4.6 Opus Thinking | Grok 4.20 Thinking |
+| --------------------- | ---------- | ----------------------------- | ------------------------ | ------------------ |
+| `agent_thought_chunk` | No         | Yes                           | Yes (expected)           | Yes (expected)     |
+| `agent_message_chunk` | Yes        | Yes                           | Yes                      | Yes                |
+| Reasoning stream      | N/A        | Streams before assistant text | Extended thinking        | Chain-of-thought   |
 
 ### Cancel semantics
 
@@ -977,11 +975,11 @@ The CLI accepts flat slugs and translates to the bracketed ACP format internally
 
 Three ways to change config:
 
-| Method | Param | Returns | Side effect |
-|--------|-------|---------|-------------|
-| `session/set_config_option` | `configId` + `value` | Full `configOptions[]` | None |
-| `session/set_mode` | `modeId` | `{}` | Emits `current_mode_update` |
-| `session/set_model` | `modelId` | `{}` | None |
+| Method                      | Param                | Returns                | Side effect                 |
+| --------------------------- | -------------------- | ---------------------- | --------------------------- |
+| `session/set_config_option` | `configId` + `value` | Full `configOptions[]` | None                        |
+| `session/set_mode`          | `modeId`             | `{}`                   | Emits `current_mode_update` |
+| `session/set_model`         | `modelId`            | `{}`                   | None                        |
 
 `set_config_option` is the generic version; `set_mode` and `set_model` are shortcuts.
 

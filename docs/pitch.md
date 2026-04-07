@@ -24,14 +24,14 @@ This isn't a novel observation. George Guimarães [documented the same convergen
 
 T3Code's `HarnessService` centralization follows the same pattern. The question isn't whether you need these primitives — you clearly do, that's what PR #581 is building. The question is whether you build them in application code or get them from the runtime.
 
-| What you need | Who's reinventing it | OTP primitive |
-| :--- | :--- | :--- |
-| Isolated agent state | LangGraph, AutoGen 0.4, CrewAI, `HarnessService` | GenServer |
-| Message passing | Langroid, AutoGen 0.4, `harnessWs` protocol | `send` / `receive` |
-| Crash recovery | Checkpoints, try/except, _missing_ | Supervisor |
-| Event projection | State reducers, `projector.ts` | ETS + GenServer |
-| Memory isolation | asyncio (shared), V8 shared heap | Process heaps |
-| Lifecycle management | Runtime registry, `HarnessService` | DynamicSupervisor |
+| What you need        | Who's reinventing it                             | OTP primitive      |
+| :------------------- | :----------------------------------------------- | :----------------- |
+| Isolated agent state | LangGraph, AutoGen 0.4, CrewAI, `HarnessService` | GenServer          |
+| Message passing      | Langroid, AutoGen 0.4, `harnessWs` protocol      | `send` / `receive` |
+| Crash recovery       | Checkpoints, try/except, _missing_               | Supervisor         |
+| Event projection     | State reducers, `projector.ts`                   | ETS + GenServer    |
+| Memory isolation     | asyncio (shared), V8 shared heap                 | Process heaps      |
+| Lifecycle management | Runtime registry, `HarnessService`               | DynamicSupervisor  |
 
 Framework analysis via [Guimarães (2026)](https://www.yourstack.com/george-guimaraes/your-agent-framework-is-just-a-bad-clone-of-elixir).
 
@@ -43,17 +43,17 @@ The `HarnessService` pattern is that 70%. It gives you centralized lifecycle, ev
 
 ## The proposed boundary
 
-| Concern | Owner | Status |
-| :--- | :--- | :--- |
-| Agent SDK access (Claude, Codex) | Node | stays |
-| Canonical event types + contracts | Node (TypeScript) | stays |
-| SQLite persistence | Node | stays |
-| Browser / Electron WebSocket | Node | stays |
-| Provider process supervision | Elixir (OTP) | new |
-| Crash isolation | Elixir (BEAM heaps) | new |
-| Per-session memory containment | Elixir (process heaps) | new |
-| Event normalization | Elixir | new |
-| Event projection + snapshot | Both | shared |
+| Concern                           | Owner                  | Status |
+| :-------------------------------- | :--------------------- | :----- |
+| Agent SDK access (Claude, Codex)  | Node                   | stays  |
+| Canonical event types + contracts | Node (TypeScript)      | stays  |
+| SQLite persistence                | Node                   | stays  |
+| Browser / Electron WebSocket      | Node                   | stays  |
+| Provider process supervision      | Elixir (OTP)           | new    |
+| Crash isolation                   | Elixir (BEAM heaps)    | new    |
+| Per-session memory containment    | Elixir (process heaps) | new    |
+| Event normalization               | Elixir                 | new    |
+| Event projection + snapshot       | Both                   | shared |
 
 ## The isolation argument
 
@@ -63,12 +63,12 @@ When you run 4+ concurrent agent sessions — especially with subagents — the 
 
 8 test types, single-run results framed as architectural demonstrations — not statistical claims. The structural properties (per-process heaps, supervision cleanup) are BEAM guarantees, not observations.
 
-| Metric | Node (V8) | Elixir (BEAM) |
-| :--- | :--- | :--- |
-| Heap with 1 leaky session | 48 → 158 MB (+110 MB shared heap) | Leak bounded per-process (94–352 KB) |
-| Relative memory growth | ~229% heap growth | ~2% total memory growth |
-| p99 event loop lag during leak | 169 ms | Not applicable (per-process GC) |
-| Sibling sessions affected | All (shared heap) | 0 (isolated heaps) |
+| Metric                         | Node (V8)                         | Elixir (BEAM)                        |
+| :----------------------------- | :-------------------------------- | :----------------------------------- |
+| Heap with 1 leaky session      | 48 → 158 MB (+110 MB shared heap) | Leak bounded per-process (94–352 KB) |
+| Relative memory growth         | ~229% heap growth                 | ~2% total memory growth              |
+| p99 event loop lag during leak | 169 ms                            | Not applicable (per-process GC)      |
+| Sibling sessions affected      | All (shared heap)                 | 0 (isolated heaps)                   |
 
 The contrast: Node's single leaky session grew the shared heap by 110 MB and added 169ms of p99 event loop lag across all sessions. Under the same leak, BEAM's total memory moved ~2% — the leak was contained to a single process heap between 94 and 352 KB, invisible to sibling sessions.
 
@@ -136,18 +136,18 @@ This fork is offered as an architectural exploration, not a merge request. The g
 
 We compared both approaches across ten concrete failure scenarios. Not benchmarks — failure scenarios. Because the OTP argument is not about throughput. It's about what happens when things go wrong.
 
-| # | Scenario | Node | Elixir | Winner |
-| :--- | :--- | :--- | :--- | :--- |
-| 1 | Provider CLI hangs | Session stale, others unaffected | GenServer stale, others unaffected | tie |
-| 2 | Provider CLI crashes | `child.on("exit")` cleans up | Port exit handled, supervisor cleanup | tie |
-| 3 | Memory leak in one session | Shared heap +110 MB, lag +169ms p99 | Leak bounded per-process (94–352 KB) | elixir |
-| 4 | Unhandled exception | 5/5 survivors continue | 5/5 survivors continue | tie |
-| 5 | 50+ concurrent sessions | Degrades sharply at ~150 (3.3s p99 at 200) | 607ms at 200, near-zero scheduler util | elixir |
-| 6 | Process spawn/teardown churn | OS handles it | Port + process links, similar | tie |
-| 7 | Subagent trees | Manual parent-child tracking | DynamicSupervisor, process links | elixir |
-| 8 | Bridge WebSocket disconnect | Does not exist — events flow directly | Events lost until reconnection | node |
-| 9 | Development complexity | One language, one debugger | Two languages, cross-runtime debugging | node |
-| 10 | Desktop packaging | Electron bundles Node, zero extra cost | +60–80 MB BEAM runtime | node |
+| #   | Scenario                     | Node                                       | Elixir                                 | Winner |
+| :-- | :--------------------------- | :----------------------------------------- | :------------------------------------- | :----- |
+| 1   | Provider CLI hangs           | Session stale, others unaffected           | GenServer stale, others unaffected     | tie    |
+| 2   | Provider CLI crashes         | `child.on("exit")` cleans up               | Port exit handled, supervisor cleanup  | tie    |
+| 3   | Memory leak in one session   | Shared heap +110 MB, lag +169ms p99        | Leak bounded per-process (94–352 KB)   | elixir |
+| 4   | Unhandled exception          | 5/5 survivors continue                     | 5/5 survivors continue                 | tie    |
+| 5   | 50+ concurrent sessions      | Degrades sharply at ~150 (3.3s p99 at 200) | 607ms at 200, near-zero scheduler util | elixir |
+| 6   | Process spawn/teardown churn | OS handles it                              | Port + process links, similar          | tie    |
+| 7   | Subagent trees               | Manual parent-child tracking               | DynamicSupervisor, process links       | elixir |
+| 8   | Bridge WebSocket disconnect  | Does not exist — events flow directly      | Events lost until reconnection         | node   |
+| 9   | Development complexity       | One language, one debugger                 | Two languages, cross-runtime debugging | node   |
+| 10  | Desktop packaging            | Electron bundles Node, zero extra cost     | +60–80 MB BEAM runtime                 | node   |
 
 **Score: Elixir 3, Node 3, Tie 4.** But the scores are not equal in weight. Elixir's wins (3, 5, 7) are the ones that scale worst if left unaddressed — memory coupling compounds over hours of use, event loop saturation hits a cliff at ~150 sessions, and subagent cleanup chains grow with tree depth. Node's wins (8, 9, 10) are present-tense shipping costs. Both are real. The question is which set of problems you'd rather have.
 
