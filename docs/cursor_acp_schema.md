@@ -99,31 +99,36 @@ The `cursor agent` CLI has matured significantly beyond the initial `--print` to
 
 ### Available Models (as of 2026-04-06)
 
-85+ models available. Key families:
+The CLI (`cursor agent models`) lists 85+ model variants (every reasoning level + fast combination). The ACP protocol (`session/new`) returns a curated subset of **~25 base models** — one per family at a default reasoning level. Parameters like `reasoning=high` can be set via `session/set_config_option`.
 
-| Family                  | Models                                                                                                                   | Notes                         |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------ | ----------------------------- |
-| **Auto**                | `auto`                                                                                                                   | Default, Cursor selects model |
-| **Composer**            | `composer-2-fast` (default), `composer-2`, `composer-1.5`                                                                | Cursor's own models           |
-| **GPT-5.4**             | low/medium/high/xhigh + fast variants                                                                                    | 1M context, reasoning levels  |
-| **GPT-5.4 Mini**        | none/low/medium/high/xhigh                                                                                               | Smaller, faster               |
-| **GPT-5.4 Nano**        | none/low/medium/high/xhigh                                                                                               | Smallest GPT-5.4              |
-| **GPT-5.3 Codex**       | low/medium/high/xhigh + fast variants                                                                                    | Code-optimized                |
-| **GPT-5.3 Codex Spark** | low/medium/high/xhigh (preview)                                                                                          | New Spark series              |
-| **GPT-5.2 Codex**       | low/medium/high/xhigh + fast variants                                                                                    | Previous gen                  |
-| **GPT-5.2**             | low/medium/high/xhigh + fast variants                                                                                    | General                       |
-| **GPT-5.1**             | low/medium/high                                                                                                          | Older gen                     |
-| **GPT-5.1 Codex Max**   | low/medium/high/xhigh + fast                                                                                             | Previous code-optimized       |
-| **GPT-5.1 Codex Mini**  | low/medium/high                                                                                                          | Compact code model            |
-| **GPT-5 Mini**          | `gpt-5-mini`                                                                                                             | Legacy                        |
-| **Claude 4.6**          | `claude-4.6-opus-high`, `opus-max`, `opus-high-thinking`, `opus-max-thinking`, `sonnet-medium`, `sonnet-medium-thinking` | 1M context                    |
-| **Claude 4.5**          | `claude-4.5-opus-high`, `opus-high-thinking`, `sonnet`, `sonnet-thinking`                                                | 1M context                    |
-| **Claude 4**            | `claude-4-sonnet`, `4-sonnet-1m`, `4-sonnet-thinking`, `4-sonnet-1m-thinking`                                            |                               |
-| **Gemini**              | `gemini-3.1-pro`, `gemini-3-flash`                                                                                       | Google models                 |
-| **Grok**                | `grok-4-20`, `grok-4-20-thinking`                                                                                        | xAI models                    |
-| **Kimi**                | `kimi-k2.5`                                                                                                              | Moonshot model                |
+Key families:
 
-**Model ID format:** The CLI model IDs use a flat slug format (`claude-4.6-opus-high-thinking`) while the ACP protocol uses a bracketed parameter format (`claude-opus-4-6[thinking=true,context=200k,effort=high]`). The CLI accepts flat slugs and translates internally.
+| Family                  | Models                                                                                                                   | Notes                                            |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------ |
+| **Auto**                | `auto`                                                                                                                   | Default, Cursor selects model                    |
+| **Composer**            | `composer-2-fast` (default), `composer-2`, `composer-1.5`                                                                | Cursor's own models                              |
+| **GPT-5.4**             | low/medium/high/xhigh + fast variants                                                                                    | 1M context, reasoning levels                     |
+| **GPT-5.4 Mini**        | none/low/medium/high/xhigh                                                                                               | Smaller, faster                                  |
+| **GPT-5.4 Nano**        | none/low/medium/high/xhigh                                                                                               | Smallest GPT-5.4                                 |
+| **GPT-5.3 Codex**       | low/medium/high/xhigh + fast variants                                                                                    | Code-optimized                                   |
+| **GPT-5.3 Codex Spark** | low/medium/high/xhigh (preview)                                                                                          | New Spark series                                 |
+| **GPT-5.2 Codex**       | low/medium/high/xhigh + fast variants                                                                                    | Previous gen                                     |
+| **GPT-5.2**             | low/medium/high/xhigh + fast variants                                                                                    | General                                          |
+| **GPT-5.1**             | low/medium/high                                                                                                          | Older gen                                        |
+| **GPT-5.1 Codex Max**   | low/medium/high/xhigh + fast                                                                                             | Previous code-optimized                          |
+| **GPT-5.1 Codex Mini**  | low/medium/high                                                                                                          | Compact code model                               |
+| **GPT-5 Mini**          | `gpt-5-mini`                                                                                                             | Legacy                                           |
+| **Claude 4.6**          | `claude-4.6-opus-high`, `opus-max`, `opus-high-thinking`, `opus-max-thinking`, `sonnet-medium`, `sonnet-medium-thinking` | 1M context                                       |
+| **Claude 4.5**          | `claude-4.5-opus-high`, `opus-high-thinking`, `sonnet`, `sonnet-thinking`                                                | 1M context                                       |
+| **Claude 4.5 Haiku**    | `claude-haiku-4-5`                                                                                                       | Thinking-capable                                 |
+| **Claude 4**            | `claude-4-sonnet`, `4-sonnet-1m`, `4-sonnet-thinking`, `4-sonnet-1m-thinking`                                            | Includes non-thinking variant (`thinking=false`) |
+| **Gemini**              | `gemini-3.1-pro`, `gemini-3-flash`, `gemini-2.5-flash`                                                                   | Google models                                    |
+| **Grok**                | `grok-4-20`, `grok-4-20-thinking`                                                                                        | xAI models                                       |
+| **Kimi**                | `kimi-k2.5`                                                                                                              | Moonshot model                                   |
+
+**Model ID format:** The CLI lists 85+ flat slugs (`claude-4.6-opus-high-thinking`), the ACP returns ~25 bracketed IDs (`claude-opus-4-6[thinking=true,context=200k,effort=high]`). The CLI expands combinations client-side; the ACP returns base models with tunable parameters.
+
+**Default model:** `composer-2[fast=true]` (not `default[]`/Auto). The `default[]` model exists in the available list but is not pre-selected.
 
 ---
 
@@ -296,8 +301,11 @@ spawn("cursor", ["agent", "acp"])
     ]
   },
   "models": {
-    "currentModelId": "default[]",
-    "availableModels": [{ "modelId": "default[]", "name": "Auto" }]
+    "currentModelId": "composer-2[fast=true]",
+    "availableModels": [
+      { "modelId": "default[]", "name": "default" },
+      { "modelId": "composer-2[fast=true]", "name": "composer-2" }
+    ]
   },
   "configOptions": [
     {
@@ -315,7 +323,7 @@ spawn("cursor", ["agent", "acp"])
       "description": "Controls which model...",
       "category": "model",
       "type": "select",
-      "currentValue": "default[]",
+      "currentValue": "composer-2[fast=true]",
       "options": []
     }
   ]
@@ -324,7 +332,7 @@ spawn("cursor", ["agent", "acp"])
 
 **Side effects:**
 
-- Emits unsolicited `session/update` notification with `available_commands_update` after response
+- Emits unsolicited `session/update` notification with `available_commands_update` asynchronously (may arrive before or after the next request — do not block on it)
 
 ---
 
@@ -607,13 +615,23 @@ These methods are **not implemented** in the ACP protocol as of `2026.03.30-a5d3
   "sessionUpdate": "available_commands_update",
   "availableCommands": [
     { "name": "copy-request-id", "description": "Copy the last request ID to clipboard" },
-    { "name": "canvas", "description": ">- (builtin skill)" }
+    { "name": "babysit", "description": ">- (builtin skill)" },
+    { "name": "canvas", "description": ">- (builtin skill)" },
+    { "name": "create-rule", "description": ">- (builtin skill)" },
+    { "name": "create-skill", "description": ">- (builtin skill)" },
+    { "name": "create-subagent", "description": ">- (builtin skill)" },
+    { "name": "cursor-blame", "description": ">- (builtin skill)" },
+    { "name": "migrate-to-skills", "description": ">- (builtin skill)" },
+    { "name": "shell", "description": ">- (builtin skill)" },
+    { "name": "update-cursor-settings", "description": ">- (builtin skill)" }
   ]
 }
 ```
 
-- Pushed unsolicited after `session/new` and `session/load`
-- Includes builtin + user-defined skills from `.cursor/`
+**Timing:** This notification is **asynchronous**. It typically arrives after `session/new` or `session/load`, but may be delayed — it can arrive after a `session/prompt` has already been sent and may interleave with streaming events. Do not block on receiving this before sending the first prompt.
+
+- Includes builtin skills (prefixed with `">-"`) and user-defined skills from `.cursor/` (suffixed with `"(user skill)"`)
+- 10 builtin skills observed as of 2026-04-07
 
 #### Variant: `current_mode_update`
 
